@@ -863,7 +863,7 @@ async def main():
     console.print("Type 'exit' to end the conversation.")
     console.print("Type 'image' to include an image in your message.")
     console.print("Type 'automode [number]' to enter Autonomous mode with a specific number of iterations.")
-    console.print("Type 'voice' to enter voice input mode.")
+    console.print("Type 'voicemode' to enter voice input mode, press esc to exit voice mode.")
     console.print("While in automode, press Ctrl+C at any time to exit the automode to return to regular chat.")
     
     def speech_to_text_thread(voice_input_queue, stop_event):
@@ -929,6 +929,7 @@ async def main():
                                 response = re.sub(r'\*\*', '', response)
                                 
                                 live.update(Panel(Markdown(response), title="Claude's Response", title_align="left", expand=False))
+                                
                             else:
                                 live.update("No speech detected. Please try again.")
                         
