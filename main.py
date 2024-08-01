@@ -1,29 +1,41 @@
-import os
-from dotenv import load_dotenv
-import json
-from tavily import TavilyClient
-import base64
-from PIL import Image
-import io
-import re
-from anthropic import Anthropic, APIStatusError, APIError
+import asyncio
+import base64    
+
+import json 
+import queue
 import difflib
+import io
+import os
+import re
+import tempfile
+import threading
 import time
+import wave
+import subprocess
+import itertools
+
+import aiohttp
+import numpy as np
+import simpleaudio as sa
+import sounddevice as sd
+from anthropic import Anthropic, APIError, APIStatusError
+from dotenv import load_dotenv
+from openai import OpenAI
+from PIL import Image
+from pydub import AudioSegment
+from pydub.playback import play
+from pynput import keyboard
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.progress import (BarColumn, Progress, SpinnerColumn,
+                           TaskProgressColumn, TextColumn)
 from rich.syntax import Syntax
 from rich.markdown import Markdown
-import asyncio
-import aiohttp
 from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
 
-async def get_user_input(prompt="You: "):
-    style = Style.from_dict({
-        'prompt': 'cyan bold',
-    })
-    session = PromptSession(style=style)
-    return await session.prompt_async(prompt, multiline=False)
+
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 import datetime
 import venv
@@ -31,8 +43,14 @@ import subprocess
 import sys
 import signal
 import logging
-from typing import Tuple, Optional
+from typing import Tuple, Optional,List, Dict, Union
 
+async def get_user_input(prompt="You: "):
+    style = Style.from_dict({
+        'prompt': 'cyan bold',
+    })
+    session = PromptSession(style=style)
+    return await session.prompt_async(prompt, multiline=False)
 
 def setup_virtual_environment() -> Tuple[str, str]:
     venv_name = "code_execution_env"
@@ -54,30 +72,41 @@ def setup_virtual_environment() -> Tuple[str, str]:
 
 
 # Load environment variables from .env file
-load_dotenv()
-
-# Initialize the Anthropic client
-anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
-if not anthropic_api_key:
-    raise ValueError("ANTHROPIC_API_KEY not found in environment variables")
-client = Anthropic(api_key=anthropic_api_key)
-
-# Initialize the Tavily client
-tavily_api_key = os.getenv("TAVILY_API_KEY")
-if not tavily_api_key:
-    raise ValueError("TAVILY_API_KEY not found in environment variables")
-tavily = TavilyClient(api_key=tavily_api_key)
+load_dotenv(override=True)
 
 console = Console()
+voice_input = ""
 
+# Add these constants at the top of the file
+CONTINUATION_EXIT_PHRASE = "AUTOMODE_COMPLETE"
+MAX_CONTINUATION_ITERATIONS = 25
 
-# Token tracking variables
-main_model_tokens = {'input': 0, 'output': 0}
-tool_checker_tokens = {'input': 0, 'output': 0}
-code_editor_tokens = {'input': 0, 'output': 0}
-code_execution_tokens = {'input': 0, 'output': 0}
+# Available Claude models:
+# Claude 3 Opus     claude-3-opus-20240229
+# Claude 3 Sonnet   claude-3-sonnet-20240229
+# Claude 3 Haiku    claude-3-haiku-20240307
+# Claude 3.5 Sonnet claude-3-5-sonnet-20240620
 
-# Set up the conversation memory (maintains context for MAINMODEL)
+# Models to use
+MAINMODEL = "claude-3-5-sonnet-20240620"
+TOOLCHECKERMODEL = "claude-3-5-sonnet-20240620"
+CODEEDITORMODEL = "claude-3-5-sonnet-20240620"
+
+# Initialize the Anthropic client
+client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+# Tavily API configuration
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+TAVILY_API_URL = "https://api.tavily.com/search"
+
+# Add error checking for required environment variables
+if not os.getenv("ANTHROPIC_API_KEY"):
+    raise ValueError("ANTHROPIC_API_KEY is not set in the environment variables")
+
+if not os.getenv("TAVILY_API_KEY"):
+    raise ValueError("TAVILY_API_KEY is not set in the environment variables")
+
+# Set up the conversation memory
 conversation_history = []
 
 # Store file contents (part of the context for MAINMODEL)
@@ -86,7 +115,6 @@ file_contents = {}
 # Code editor memory (maintains some context for CODEEDITORMODEL between calls)
 code_editor_memory = []
 
-# Files already present in code editor's context
 code_editor_files = set()
 
 # automode flag
@@ -122,8 +150,6 @@ You are Claude, an AI assistant powered by Anthropic's Claude-3.5-Sonnet model, 
 4. Staying current with the latest technologies and best practices
 5. Analyzing and manipulating files within the project directory
 6. Performing web searches for up-to-date information
-7. Executing code and analyzing its output within an isolated 'code_execution_env' virtual environment
-8. Managing and stopping running processes started within the 'code_execution_env'
 
 Available tools and their optimal use cases:
 
@@ -152,29 +178,30 @@ Tool Usage Guidelines:
 - When working with multiple files, consider using read_multiple_files for efficiency.
 
 Error Handling and Recovery:
-- If a tool operation fails, carefully analyze the error message and attempt to resolve the issue.
-- For file-related errors, double-check file paths and permissions before retrying.
+- If a tool operation fails, analyze the error message and attempt to resolve the issue.
+- For file-related errors, check file paths and permissions before retrying.
 - If a search fails, try rephrasing the query or breaking it into smaller, more specific searches.
-- If code execution fails, analyze the error output and suggest potential fixes, considering the isolated nature of the environment.
-- If a process fails to stop, consider potential reasons and suggest alternative approaches.
 
 Project Creation and Management:
 1. Start by creating a root folder for new projects.
 2. Create necessary subdirectories and files within the root folder.
 3. Organize the project structure logically, following best practices for the specific project type.
 
-Always strive for accuracy, clarity, and efficiency in your responses and actions. Your instructions must be precise and comprehensive. If uncertain, use the tavily_search tool or admit your limitations. When executing code, always remember that it runs in the isolated 'code_execution_env' virtual environment. Be aware of any long-running processes you start and manage them appropriately, including stopping them when they are no longer needed.
 
-When using tools:
-1. Carefully consider if a tool is necessary before using it.
-2. Ensure all required parameters are provided and valid.
-3. Handle both successful results and errors gracefully.
-4. Provide clear explanations of tool usage and results to the user.
+Always strive for accuracy, clarity, and efficiency in your responses and actions. If uncertain, use the tavily_search tool or admit your limitations.
 
-Remember, you are an AI assistant, and your primary goal is to help the user accomplish their tasks effectively and efficiently while maintaining the integrity and security of their development environment.
+If you want a specific part of your response to be spoken aloud to the user,                                                                                                                                                             │
+  enclose that part in double asterisks (**) on each side.                                                                                                                                                                                          │
+                                                                                                                                                                                                                                           │
+  Example:                                                                                                                                                                                                                                 │
+  Hello! **How can I assist you today?**                                                                                                                                                                                                        │
+                                                                                                                                                                                                                                           │
+  Only the text between the double asterisks will be converted to speech.        
+
 """
 
-AUTOMODE_SYSTEM_PROMPT = """
+# Auto mode-specific system prompt
+automode_system_prompt = """
 You are currently in automode. Follow these guidelines:
 
 1. Goal Setting:
@@ -210,9 +237,134 @@ You are currently in automode. Follow these guidelines:
 Remember: Focus on completing the established goals efficiently and effectively. Avoid unnecessary conversations or requests for additional tasks.
 """
 
+def speech_to_text(filename="recorded_audio.wav", debug=False):
+    is_recording = False
+    recorded_audio = []
+    samplerate = 44100  # Sample rate
 
-def update_system_prompt(current_iteration: Optional[int] = None, max_iterations: Optional[int] = None) -> str:
-    global file_contents
+    def transcribe_audio_openai(file_path):
+        client = OpenAI()
+        with open(file_path, "rb") as audio:
+            transcript = client.audio.transcriptions.create(
+                file=audio, model="whisper-1", language="en"
+            )
+        if debug:
+            print("Transcribed Text (OpenAI):", transcript)
+        return transcript
+
+    def on_press(key):
+        nonlocal is_recording
+        if key == keyboard.Key.ctrl:
+            if not is_recording:
+                is_recording = True
+                recorded_audio.clear()
+
+    def on_release(key):
+        nonlocal is_recording
+        if key == keyboard.Key.ctrl:
+            if is_recording:
+                is_recording = False
+                return False  # Stop listener
+
+    def callback(indata, frames, time, status):
+        if is_recording:
+            recorded_audio.append(indata.copy())
+
+    with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
+        with sd.InputStream(samplerate=samplerate, channels=1, callback=callback):
+            listener.join()
+
+    if not recorded_audio:
+        return None
+
+    recording = np.concatenate(recorded_audio, axis=0)
+    recording_int = np.int16(recording * 32767)
+    
+    with wave.open(filename, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(samplerate)
+        wf.writeframes(recording_int.tobytes())
+
+    return transcribe_audio_openai(filename)
+
+def text_to_speech(message, service="openai"):
+    def convert_opus_to_wav(opus_file_path):
+        wav_file_path = opus_file_path.replace(".opus", ".wav")
+        command = f"ffmpeg -i {opus_file_path} {wav_file_path} > /dev/null 2>&1"
+        os.system(command)
+        return wav_file_path
+
+    def audio_player(playback_queue):
+        while True:
+            wav_path = playback_queue.get()
+            try:
+                audio = AudioSegment.from_file(wav_path, format="wav")
+                play_obj = sa.play_buffer(
+                    audio.raw_data,
+                    num_channels=audio.channels,
+                    bytes_per_sample=audio.sample_width,
+                    sample_rate=audio.frame_rate,
+                )
+                play_obj.wait_done()
+                print(f"Audio played: {wav_path}")
+            except subprocess.CalledProcessError as e:
+                print(f"Subprocess error: {e}")
+            except Exception as e:
+                print(f"Unexpected error: {e}")
+            finally:
+                os.remove(wav_path)
+                playback_queue.task_done()
+
+    def create_temp_file(suffix=".wav"):
+        temp_fd, temp_path = tempfile.mkstemp(suffix=suffix)
+        os.close(temp_fd)
+        return temp_path
+
+    def generate_with_openai(message):
+        temp_path = create_temp_file(suffix=".opus")
+        client = OpenAI()
+        
+        # Extract the text from the Transcription object if necessary
+        if hasattr(message, 'text'):
+            message = message.text
+        
+        response = client.audio.speech.create(
+            model="tts-1", response_format="opus", voice="alloy", input=message, speed="1.0"
+        )
+        with open(temp_path, "wb") as f:
+            f.write(response.content)
+            print(f"Audio generated: {temp_path}")
+            return temp_path
+
+    message_queue = queue.Queue()
+    playback_queue = queue.Queue()
+
+    def audio_generator():
+        while True:
+            service, message = message_queue.get()
+            if service == "openai":
+                try:
+                    temp_path = generate_with_openai(message)
+                    playback_queue.put(convert_opus_to_wav(temp_path))
+                except Exception as e:
+                    print(f"Error generating audio: {e}")
+            else:
+                print(f"Unknown service: {service}")
+            message_queue.task_done()
+
+    message_queue.put((service, message))
+
+    threading.Thread(target=audio_generator, daemon=True).start()
+    threading.Thread(target=audio_player, args=(playback_queue,), daemon=True).start()
+
+    # Wait for the queues to be empty
+    message_queue.join()
+    playback_queue.join()
+
+
+def update_system_prompt(current_iteration=None, max_iterations=None):
+    global base_system_prompt, automode_system_prompt
     chain_of_thought_prompt = """
     Answer the user's request using relevant tools (if they are available). Before calling a tool, do some analysis within <thinking></thinking> tags. First, think about which of the provided tools is the relevant tool to answer the user's request. Second, go through each of the required parameters of the relevant tool and determine if the user has directly provided or given enough information to infer a value. When deciding if the parameter can be inferred, carefully consider all the context to see if it supports a specific value. If all of the required parameters are present or can be reasonably inferred, close the thinking tag and proceed with the tool call. BUT, if one of the values for a required parameter is missing, DO NOT invoke the function (not even with fillers for the missing params) and instead, ask the user to provide the missing parameters. DO NOT ask for more information on optional parameters if it is not provided.
 
@@ -408,10 +560,10 @@ async def apply_edits(file_path, edit_instructions, original_content):
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TaskProgressColumn(),
         console=console
     ) as progress:
-        edit_task = progress.add_task("[cyan]Applying edits...", total=total_edits)
+        task = progress.add_task("[cyan]Editing file...", total=total_lines)
 
         for i, edit in enumerate(edit_instructions, 1):
             search_content = edit['search'].strip()
@@ -536,10 +688,23 @@ def list_files(path="."):
     except Exception as e:
         return f"Error listing files: {str(e)}"
 
-def tavily_search(query):
+async def tavily_search(query):
     try:
-        response = tavily.qna_search(query=query, search_depth="advanced")
-        return response
+        headers = {
+            "Content-Type": "application/json",
+            "X-API-Key": TAVILY_API_KEY
+        }
+        payload = {
+            "query": query,
+            "search_depth": "advanced"
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(TAVILY_API_URL, headers=headers, json=payload) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return result
+                else:
+                    return f"Error performing search: HTTP {response.status}, {await response.text()}"
     except Exception as e:
         return f"Error performing search: {str(e)}"
 
@@ -700,7 +865,6 @@ tools = [
     }
 ]
 
-from typing import Dict, Any
 
 async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
     try:
@@ -881,7 +1045,7 @@ async def chat_with_claude(user_input, image_path=None, current_iteration=None, 
             ]
         }
         current_conversation.append(image_message)
-        console.print(Panel("Image message added to conversation history", title_align="left", title="Image Added", style="green"))
+        console.print(Panel("Image message added to conversation history", title_align="left", title="Image Added", expand=False, style="green"))
     else:
         current_conversation.append({"role": "user", "content": user_input})
 
@@ -917,11 +1081,9 @@ async def chat_with_claude(user_input, image_path=None, current_iteration=None, 
             extra_headers={"anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15"},
             messages=messages,
             tools=tools,
-            tool_choice={"type": "auto"}
+            tool_choice={"type": "auto"},
+            stream=True 
         )
-        # Update token usage for MAINMODEL
-        main_model_tokens['input'] += response.usage.input_tokens
-        main_model_tokens['output'] += response.usage.output_tokens
     except APIStatusError as e:
         if e.status_code == 429:
             console.print(Panel("Rate limit exceeded. Retrying after a short delay...", title="API Error", style="bold yellow"))
@@ -938,22 +1100,23 @@ async def chat_with_claude(user_input, image_path=None, current_iteration=None, 
     exit_continuation = False
     tool_uses = []
 
-    for content_block in response.content:
-        if content_block.type == "text":
-            assistant_response += content_block.text
-            if CONTINUATION_EXIT_PHRASE in content_block.text:
-                exit_continuation = True
-        elif content_block.type == "tool_use":
-            tool_uses.append(content_block)
+    # Handle streaming response
+    for chunk in response:
+        if chunk.type == "content_block_start":
+            if chunk.content_block.type == "text":
+                console.print("[bold green]Claude:[/bold green] ", end="")
+            elif chunk.content_block.type == "tool_use":
+                tool_uses.append(chunk.content_block)
+        elif chunk.type == "content_block_delta":
+            if chunk.delta.type == "text_delta":
+                console.print(chunk.delta.text, end="")
+                assistant_response += chunk.delta.text
+                if CONTINUATION_EXIT_PHRASE in chunk.delta.text:
+                    exit_continuation = True
+        elif chunk.type == "content_block_stop":
+            console.print()  # Add a newline at the end of the response
 
-    console.print(Panel(Markdown(assistant_response), title="Claude's Response", title_align="left", border_style="blue", expand=False))
-
-    # Display files in context
-    if file_contents:
-        files_in_context = "\n".join(file_contents.keys())
-    else:
-        files_in_context = "No files in context. Read, create, or edit files to add."
-    console.print(Panel(files_in_context, title="Files in Context", title_align="left", border_style="white", expand=False))
+    console.print("\n")
 
     for tool_use in tool_uses:
         tool_name = tool_use.name
@@ -1014,7 +1177,8 @@ async def chat_with_claude(user_input, image_path=None, current_iteration=None, 
                 extra_headers={"anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15"},
                 messages=messages,
                 tools=tools,
-                tool_choice={"type": "auto"}
+                tool_choice={"type": "auto"},
+                Stream=True,
             )
             # Update token usage for tool checker
             tool_checker_tokens['input'] += tool_response.usage.input_tokens
@@ -1140,24 +1304,111 @@ async def main():
     console.print("Type 'image' to include an image in your message.")
     console.print("Type 'automode [number]' to enter Autonomous mode with a specific number of iterations.")
     console.print("Type 'reset' to clear the conversation history.")
+    console.print("Type 'voicemode' to enter voice input mode, press esc to exit voice mode.")
     console.print("Type 'save chat' to save the conversation to a Markdown file.")
     console.print("While in automode, press Ctrl+C at any time to exit the automode to return to regular chat.")
 
+    ctrl_pressed = False
+    esc_pressed = False
+    
+    def speech_to_text_thread(voice_input_queue, stop_event):
+        while not stop_event.is_set():
+            voice_input = speech_to_text()
+            if voice_input and hasattr(voice_input, 'text'):
+                voice_input_queue.put(voice_input.text)
+            time.sleep(0.1)
+
+    voice_mode = False
+    voice_input_queue = queue.Queue()
+    stop_event = threading.Event()
+
+    keyboard_listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+    keyboard_listener.start()
+
     while True:
-        user_input = await get_user_input()
-
-        if user_input.lower() == 'exit':
-            console.print(Panel("Thank you for chatting. Goodbye!", title_align="left", title="Goodbye", style="bold green"))
-            break
-
-        if user_input.lower() == 'reset':
-            reset_conversation()
+        if not voice_mode:
+            console.print("[bold cyan]You:[/bold cyan] ", end="")
+            user_input = input()
+        
+        if user_input.lower() == 'voicemode':
+            voice_mode = True
+            console.print(Panel("Entering voice mode. Hold Ctrl to speak, release when done. Say 'exit voicemode' or press Esc to exit voice mode.", title="Voice Mode", style="bold blue"))
+            
+            stop_event.clear()
+            speech_thread = threading.Thread(target=speech_to_text_thread, args=(voice_input_queue, stop_event), daemon=True)
+            speech_thread.start()
+            
+            spinner = Spinner("dots")
+            
+            with Live(spinner, refresh_per_second=10) as live:
+                live.update("Hold Ctrl to speak...")
+                
+                while voice_mode:
+                    try:
+                        if ctrl_pressed:
+                            live.update("Listening...")
+                            
+                            while ctrl_pressed:
+                                await asyncio.sleep(0.1)
+                            
+                            live.update("Processing...")
+                            
+                            user_input = await asyncio.wait_for(wait_for_voice_input(voice_input_queue), timeout=5.0)
+                            
+                            if user_input:
+                                live.update(f"[bold cyan]You (voice):[/bold cyan] {user_input}")
+                            
+                                if user_input.lower() == 'exit voicemode':
+                                    voice_mode = False
+                                    live.update("Exiting voice mode. Returning to text input.")
+                                    break
+                            
+                                response, _ = await chat_with_claude(user_input)
+                                
+                                # Extract and process ** tags
+                                speak_content = re.findall(r'\*\*(.*?)\*\*', response, re.DOTALL)
+                                for content in speak_content:
+                                    text_to_speech(content)
+                                
+                                # Remove ** tags from the response
+                                response = re.sub(r'\*\*', '', response)
+                                
+                                live.update(Panel(Markdown(response), title="Claude's Response", title_align="left", expand=False))
+                                
+                            else:
+                                live.update("No speech detected. Please try again.")
+                        
+                        elif esc_pressed:
+                            voice_mode = False
+                            esc_pressed = False
+                            live.update("Exiting voice mode. Returning to text input.")
+                            break
+                        
+                        await asyncio.sleep(0.1)
+                        
+                    except asyncio.TimeoutError:
+                        live.update("Voice input timed out. Please try again.")
+                    
+                    live.update("Hold Ctrl to speak...")
+            
+            # Clean up voice mode resources
+            stop_event.set()
+            speech_thread.join(timeout=1)
+            voice_input_queue = queue.Queue()
             continue
 
         if user_input.lower() == 'save chat':
             filename = save_chat()
             console.print(Panel(f"Chat saved to {filename}", title="Chat Saved", style="bold green"))
-            continue
+        if user_input.lower() == 'exit':
+            if voice_mode:
+                console.print(Panel("OK, you're back to typing.", title="Exiting Voice", style="bold blue"))
+                voice_mode = False
+                speech_thread.join()
+                continue
+            else:
+                console.print(Panel("Thank you for chatting. Goodbye!", title_align="left", title="Goodbye", style="bold green"))
+                break
 
         if user_input.lower() == 'image':
             image_path = (await get_user_input("Drag and drop your image here, then press enter: ")).strip().replace("'", "")
@@ -1211,6 +1462,13 @@ async def main():
             console.print(Panel("Exited automode. Returning to regular chat.", style="green"))
         else:
             response, _ = await chat_with_claude(user_input)
+
+    keyboard_listener.stop()
+
+async def wait_for_voice_input(queue):
+    while queue.empty():
+        await asyncio.sleep(0.1)
+    return queue.get()
 
 if __name__ == "__main__":
     asyncio.run(main())
