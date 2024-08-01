@@ -1,18 +1,21 @@
 import asyncio
-import base64    
-
-import json 
-import queue
+import base64
+import datetime
 import difflib
 import io
+import json
 import os
+import sys
+import queue
 import re
+import subprocess
 import tempfile
 import threading
 import time
+import logging
+import venv
 import wave
-import subprocess
-import itertools
+from typing import Any, Dict, Tuple
 
 import aiohttp
 import numpy as np
@@ -22,8 +25,9 @@ from anthropic import Anthropic, APIError, APIStatusError
 from dotenv import load_dotenv
 from openai import OpenAI
 from PIL import Image
+from prompt_toolkit import PromptSession
+from prompt_toolkit.styles import Style
 from pydub import AudioSegment
-from pydub.playback import play
 from pynput import keyboard
 from rich.console import Console
 from rich.markdown import Markdown
@@ -31,19 +35,6 @@ from rich.panel import Panel
 from rich.progress import (BarColumn, Progress, SpinnerColumn,
                            TaskProgressColumn, TextColumn)
 from rich.syntax import Syntax
-from rich.markdown import Markdown
-from prompt_toolkit import PromptSession
-from prompt_toolkit.styles import Style
-
-
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
-import datetime
-import venv
-import subprocess
-import sys
-import signal
-import logging
-from typing import Tuple, Optional,List, Dict, Union
 
 async def get_user_input(prompt="You: "):
     style = Style.from_dict({
@@ -1014,7 +1005,7 @@ def save_chat():
 
 
 async def chat_with_claude(user_input, image_path=None, current_iteration=None, max_iterations=None):
-    global conversation_history, automode, main_model_tokens
+    global conversation_history, automode
 
     # This function uses MAINMODEL, which maintains context across calls
     current_conversation = []
@@ -1178,7 +1169,7 @@ async def chat_with_claude(user_input, image_path=None, current_iteration=None, 
                 messages=messages,
                 tools=tools,
                 tool_choice={"type": "auto"},
-                Stream=True,
+                stream=True,
             )
             # Update token usage for tool checker
             tool_checker_tokens['input'] += tool_response.usage.input_tokens
@@ -1210,6 +1201,30 @@ def reset_code_editor_memory():
     code_editor_memory = []
     console.print(Panel("Code editor memory has been reset.", title="Reset", style="bold green"))
 
+
+# Define global variables at the module level
+# Remove the global statement at the module level
+conversation_history = []
+file_contents = {}
+code_editor_files = set()# Remove the global statement at the module level
+main_model_tokens = {'input': 0, 'output': 0}
+tool_checker_tokens = {'input': 0, 'output': 0}
+code_editor_tokens = {'input': 0, 'output': 0}
+code_execution_tokens = {'input': 0, 'output': 0}
+conversation_history = []
+main_model_tokens = {'input': 0, 'output': 0}
+tool_checker_tokens = {'input': 0, 'output': 0}
+code_editor_tokens = {'input': 0, 'output': 0}
+code_execution_tokens = {'input': 0, 'output': 0}
+file_contents = {}
+code_editor_files = set()
+conversation_history = []
+main_model_tokens = {'input': 0, 'output': 0}
+tool_checker_tokens = {'input': 0, 'output': 0}
+code_editor_tokens = {'input': 0, 'output': 0}
+code_execution_tokens = {'input': 0, 'output': 0}
+file_contents = {}
+code_editor_files = set()
 
 def reset_conversation():
     global conversation_history, main_model_tokens, tool_checker_tokens, code_editor_tokens, code_execution_tokens, file_contents, code_editor_files
@@ -1298,7 +1313,20 @@ def display_token_usage():
 
 
 async def main():
-    global automode, conversation_history
+    global automode, conversation_history, on_press, on_release, ctrl_pressed, esc_pressed, voice_mode, voice_input_queue, stop_event
+
+    def on_press(key):
+        # global ctrl_pressed
+        if key == keyboard.Key.ctrl:
+            ctrl_pressed = True
+
+    def on_release(key):
+        # global ctrl_pressed, esc_pressed
+        if key == keyboard.Key.ctrl:
+            ctrl_pressed = False
+        elif key == keyboard.Key.esc:
+            esc_pressed = True
+
     console.print(Panel("Welcome to the Claude-3-Sonnet Engineer Chat with Multi-Agent and Image Support!", title="Welcome", style="bold green"))
     console.print("Type 'exit' to end the conversation.")
     console.print("Type 'image' to include an image in your message.")
@@ -1313,9 +1341,9 @@ async def main():
     
     def speech_to_text_thread(voice_input_queue, stop_event):
         while not stop_event.is_set():
-            voice_input = speech_to_text()
-            if voice_input and hasattr(voice_input, 'text'):
-                voice_input_queue.put(voice_input.text)
+            speech_result = speech_to_text()
+            if speech_result and hasattr(speech_result, 'text'):
+                voice_input_queue.put(speech_result.text)
             time.sleep(0.1)
 
     voice_mode = False
