@@ -35,6 +35,13 @@ from rich.panel import Panel
 from rich.progress import (BarColumn, Progress, SpinnerColumn,
                            TaskProgressColumn, TextColumn)
 from rich.syntax import Syntax
+from rich.spinner import Spinner
+from rich.live import Live
+
+# Add these global declarations at the top of the file, with the other global variables
+global ctrl_pressed, esc_pressed
+ctrl_pressed = False
+esc_pressed = False
 
 async def get_user_input(prompt="You: "):
     style = Style.from_dict({
@@ -62,11 +69,13 @@ def setup_virtual_environment() -> Tuple[str, str]:
         raise
 
 
+
 # Load environment variables from .env file
 load_dotenv(override=True)
 
 console = Console()
 voice_input = ""
+use_stream=True
 
 # Add these constants at the top of the file
 CONTINUATION_EXIT_PHRASE = "AUTOMODE_COMPLETE"
@@ -286,7 +295,7 @@ def text_to_speech(message, service="openai"):
         os.system(command)
         return wav_file_path
 
-    def audio_player(playback_queue):
+    def audio_player(playback_queue, active_play_objects):
         while True:
             wav_path = playback_queue.get()
             try:
@@ -297,16 +306,27 @@ def text_to_speech(message, service="openai"):
                     bytes_per_sample=audio.sample_width,
                     sample_rate=audio.frame_rate,
                 )
-                play_obj.wait_done()
-                print(f"Audio played: {wav_path}")
+                active_play_objects.append((play_obj, wav_path))
+                # print(f"Audio queued: {wav_path}")
             except subprocess.CalledProcessError as e:
-                print(f"Subprocess error: {e}")
+                # print(f"Subprocess error: {e}")
+                pass
+
             except Exception as e:
-                print(f"Unexpected error: {e}")
+                # print(f"Unexpected error: {e}")
+                pass
             finally:
-                os.remove(wav_path)
                 playback_queue.task_done()
 
+    def cleanup_wav_files(active_play_objects):
+        while True:
+            for play_obj, wav_path in active_play_objects[:]:
+                
+                if not play_obj.is_playing():
+                    os.remove(wav_path)
+                    active_play_objects.remove((play_obj, wav_path))
+                    print(f"Cleaned up: {wav_path}")  
+                                    
     def create_temp_file(suffix=".wav"):
         temp_fd, temp_path = tempfile.mkstemp(suffix=suffix)
         os.close(temp_fd)
@@ -325,11 +345,12 @@ def text_to_speech(message, service="openai"):
         )
         with open(temp_path, "wb") as f:
             f.write(response.content)
-            print(f"Audio generated: {temp_path}")
+            # print(f"Audio generated: {temp_path}")
             return temp_path
 
     message_queue = queue.Queue()
     playback_queue = queue.Queue()
+    active_play_objects = []
 
     def audio_generator():
         while True:
@@ -339,15 +360,18 @@ def text_to_speech(message, service="openai"):
                     temp_path = generate_with_openai(message)
                     playback_queue.put(convert_opus_to_wav(temp_path))
                 except Exception as e:
-                    print(f"Error generating audio: {e}")
+                    # print(f"Error generating audio: {e}")
+                    pass
             else:
-                print(f"Unknown service: {service}")
+                # print(f"Unknown service: {service}")
+                pass
             message_queue.task_done()
 
     message_queue.put((service, message))
-
+    
     threading.Thread(target=audio_generator, daemon=True).start()
-    threading.Thread(target=audio_player, args=(playback_queue,), daemon=True).start()
+    threading.Thread(target=audio_player, args=(playback_queue, active_play_objects), daemon=True).start()
+    threading.Thread(target=cleanup_wav_files, args=(active_play_objects,), daemon=True).start()
 
     # Wait for the queues to be empty
     message_queue.join()
@@ -1005,7 +1029,8 @@ def save_chat():
 
 
 async def chat_with_claude(user_input, image_path=None, current_iteration=None, max_iterations=None):
-    global conversation_history, automode
+
+    global conversation_history
 
     # This function uses MAINMODEL, which maintains context across calls
     current_conversation = []
@@ -1036,7 +1061,7 @@ async def chat_with_claude(user_input, image_path=None, current_iteration=None, 
             ]
         }
         current_conversation.append(image_message)
-        console.print(Panel("Image message added to conversation history", title_align="left", title="Image Added", expand=False, style="green"))
+        console.print(Panel("Image message added to conversation history", title_align="left", title="Image Added", style="green"))
     else:
         current_conversation.append({"role": "user", "content": user_input})
 
@@ -1073,7 +1098,7 @@ async def chat_with_claude(user_input, image_path=None, current_iteration=None, 
             messages=messages,
             tools=tools,
             tool_choice={"type": "auto"},
-            stream=True 
+            stream=use_stream 
         )
     except APIStatusError as e:
         if e.status_code == 429:
@@ -1090,24 +1115,74 @@ async def chat_with_claude(user_input, image_path=None, current_iteration=None, 
     assistant_response = ""
     exit_continuation = False
     tool_uses = []
+    tool_use = {}
+    stream_input_tokens = 0
+    stream_output_tokens = 0
 
-    # Handle streaming response
-    for chunk in response:
-        if chunk.type == "content_block_start":
-            if chunk.content_block.type == "text":
-                console.print("[bold green]Claude:[/bold green] ", end="")
-            elif chunk.content_block.type == "tool_use":
-                tool_uses.append(chunk.content_block)
-        elif chunk.type == "content_block_delta":
-            if chunk.delta.type == "text_delta":
-                console.print(chunk.delta.text, end="")
-                assistant_response += chunk.delta.text
-                if CONTINUATION_EXIT_PHRASE in chunk.delta.text:
+    if use_stream:
+        tool_block = ""
+        for chunk in response:
+            if chunk.type == "content_block_start":
+                if chunk.content_block.type == "text":
+                    console.print("[bold green]Claude:[/bold green] ", end="")
+                elif chunk.content_block.type == "tool_use":
+                    tool_use = chunk.content_block
+                    tool_use.input = ""             
+            if chunk.type == "message_start":
+                stream_input_tokens = chunk.message.usage.input_tokens
+            elif chunk.type == "message_delta":
+                stream_output_tokens += chunk.usage.output_tokens
+            elif chunk.type == "content_block_stop":
+                if tool_use:
+                    try:
+                        tool_use.input = json.loads(tool_use.input)
+                    except json.JSONDecodeError:
+                        console.print("[bold red]Error: Invalid JSON in tool input[/bold red]")
+                    tool_uses.append(tool_use)
+                    tool_block = json.dumps(tool_use.dict(), indent=2)
+                    assistant_response += f"\n\nTool Use:\n{tool_block}\n\n"
+            
+            elif chunk.type == "content_block_delta":
+                if chunk.delta.type == "text_delta":
+                    console.print(chunk.delta.text, end="")
+                    assistant_response += chunk.delta.text
+
+                    if CONTINUATION_EXIT_PHRASE in chunk.delta.text:
+                        exit_continuation = True
+
+                elif chunk.delta.type == "input_json_delta":
+                    tool_use.input += chunk.delta.partial_json
+
+
+
+            elif chunk.type == "message_stop":
+                console.print()  # Print a newline at the end of the message
+            # Update token usage for MAINMODEL after streaming
+            main_model_tokens['input'] += stream_input_tokens
+            main_model_tokens['output'] += stream_output_tokens
+    else:
+        # Non-streaming response handling
+        for content_block in response.content:
+            if content_block.type == "text":
+                assistant_response += content_block.text
+                if CONTINUATION_EXIT_PHRASE in content_block.text:
                     exit_continuation = True
-        elif chunk.type == "content_block_stop":
-            console.print()  # Add a newline at the end of the response
+            elif content_block.type == "tool_use":
+                tool_uses.append(content_block)
 
-    console.print("\n")
+        console.print(Panel(Markdown(assistant_response), title="Claude's Response", title_align="left", border_style="blue", expand=False))
+
+        # Update token usage for MAINMODEL (non-streaming)
+        main_model_tokens['input'] += response.usage.input_tokens
+        main_model_tokens['output'] += response.usage.output_tokens
+
+    # Display files in context
+    if file_contents:
+        files_in_context = "\n".join(file_contents.keys())
+    else:
+        files_in_context = "No files in context. Read, create, or edit files to add."
+    
+    console.print(Panel(files_in_context, title="Files in Context", title_align="left", border_style="white", expand=False))
 
     for tool_use in tool_uses:
         tool_name = tool_use.name
@@ -1123,7 +1198,7 @@ async def chat_with_claude(user_input, image_path=None, current_iteration=None, 
             console.print(Panel(tool_result["content"], title="Tool Execution Error", style="bold red"))
         else:
             console.print(Panel(tool_result["content"], title_align="left", title="Tool Result", style="green"))
-
+        
         current_conversation.append({
             "role": "assistant",
             "content": [
@@ -1153,13 +1228,13 @@ async def chat_with_claude(user_input, image_path=None, current_iteration=None, 
             if 'path' in tool_input:
                 file_path = tool_input['path']
                 if "File contents updated in system prompt" in tool_result["content"] or \
-                   "File created and added to system prompt" in tool_result["content"] or \
-                   "has been read and stored in the system prompt" in tool_result["content"]:
+                "File created and added to system prompt" in tool_result["content"] or \
+                "has been read and stored in the system prompt" in tool_result["content"]:
                     # The file_contents dictionary is already updated in the tool function
                     pass
 
         messages = filtered_conversation_history + current_conversation
-
+        
         try:
             tool_response = client.messages.create(
                 model=TOOLCHECKERMODEL,
@@ -1169,18 +1244,46 @@ async def chat_with_claude(user_input, image_path=None, current_iteration=None, 
                 messages=messages,
                 tools=tools,
                 tool_choice={"type": "auto"},
-                stream=True,
+                stream=use_stream
             )
-            # Update token usage for tool checker
-            tool_checker_tokens['input'] += tool_response.usage.input_tokens
-            tool_checker_tokens['output'] += tool_response.usage.output_tokens
-
             tool_checker_response = ""
-            for tool_content_block in tool_response.content:
-                if tool_content_block.type == "text":
-                    tool_checker_response += tool_content_block.text
-            console.print(Panel(Markdown(tool_checker_response), title="Claude's Response to Tool Result",  title_align="left", border_style="blue", expand=False))
-            assistant_response += "\n\n" + tool_checker_response
+            
+            # Initialize token counters for streaming
+            stream_input_tokens = 0
+            stream_output_tokens = 0
+
+            if use_stream:
+                console.print("[bold green]Claude (Tool Response):[/bold green] ", end="")
+                tool_content_block = ""
+                for chunk in tool_response:
+                    if chunk.type == "message_start":
+                        stream_input_tokens = chunk.message.usage.input_tokens
+                    elif chunk.type == "message_delta":
+                        stream_output_tokens += chunk.usage.output_tokens
+
+                    if chunk.type == "content_block_delta" and chunk.delta.type == "text_delta":
+                        tool_content_block += chunk.delta.text
+                        console.print(chunk.delta.text, end="")
+                        
+                    elif chunk.type == "content_block_stop":
+                        console.print()  # Add a newline at the end of the tool response
+                        assistant_response += "\n\n" + tool_content_block
+                        break
+            
+                # Update token usage for tool checker after streaming
+                tool_checker_tokens['input'] += stream_input_tokens
+                tool_checker_tokens['output'] += stream_output_tokens
+            else:
+            # Update token usage for tool checker (non-streaming)
+                tool_checker_tokens['input'] += tool_response.usage.input_tokens
+                tool_checker_tokens['output'] += tool_response.usage.output_tokens
+
+                tool_checker_response = ""
+                for tool_content_block in tool_response.content:
+                    if tool_content_block.type == "text":
+                        tool_checker_response += tool_content_block.text
+                console.print(Panel(Markdown(tool_checker_response), title="Claude's Response to Tool Result",  title_align="left", border_style="blue", expand=False))
+                assistant_response += "\n\n" + tool_checker_response
         except APIError as e:
             error_message = f"Error in tool response: {str(e)}"
             console.print(Panel(error_message, title="Error", style="bold red"))
@@ -1191,7 +1294,7 @@ async def chat_with_claude(user_input, image_path=None, current_iteration=None, 
 
     conversation_history = messages + [{"role": "assistant", "content": assistant_response}]
 
-    # Display token usage at the end
+    # Display token usage at the end (for both streaming and non-streaming)
     display_token_usage()
 
     return assistant_response, exit_continuation
@@ -1313,19 +1416,22 @@ def display_token_usage():
 
 
 async def main():
-    global automode, conversation_history, on_press, on_release, ctrl_pressed, esc_pressed, voice_mode, voice_input_queue, stop_event
+    global automode, use_stream,conversation_history, on_press, on_release, ctrl_pressed, esc_pressed, voice_mode, voice_input_queue, stop_event
 
     def on_press(key):
-        # global ctrl_pressed
+        global ctrl_pressed
         if key == keyboard.Key.ctrl:
             ctrl_pressed = True
+            print("CTRL pressed")  # Debug log
 
     def on_release(key):
-        # global ctrl_pressed, esc_pressed
+        global ctrl_pressed, esc_pressed
         if key == keyboard.Key.ctrl:
             ctrl_pressed = False
+            print("CTRL released")  # Debug log
         elif key == keyboard.Key.esc:
             esc_pressed = True
+            print("ESC pressed")  # Debug log
 
     console.print(Panel("Welcome to the Claude-3-Sonnet Engineer Chat with Multi-Agent and Image Support!", title="Welcome", style="bold green"))
     console.print("Type 'exit' to end the conversation.")
@@ -1335,16 +1441,6 @@ async def main():
     console.print("Type 'voicemode' to enter voice input mode, press esc to exit voice mode.")
     console.print("Type 'save chat' to save the conversation to a Markdown file.")
     console.print("While in automode, press Ctrl+C at any time to exit the automode to return to regular chat.")
-
-    ctrl_pressed = False
-    esc_pressed = False
-    
-    def speech_to_text_thread(voice_input_queue, stop_event):
-        while not stop_event.is_set():
-            speech_result = speech_to_text()
-            if speech_result and hasattr(speech_result, 'text'):
-                voice_input_queue.put(speech_result.text)
-            time.sleep(0.1)
 
     voice_mode = False
     voice_input_queue = queue.Queue()
@@ -1360,15 +1456,16 @@ async def main():
         
         if user_input.lower() == 'voicemode':
             voice_mode = True
+            # use_stream = False
             console.print(Panel("Entering voice mode. Hold Ctrl to speak, release when done. Say 'exit voicemode' or press Esc to exit voice mode.", title="Voice Mode", style="bold blue"))
             
             stop_event.clear()
             speech_thread = threading.Thread(target=speech_to_text_thread, args=(voice_input_queue, stop_event), daemon=True)
             speech_thread.start()
             
-            spinner = Spinner("dots")
+            spinner = Spinner("dots", "testing")
             
-            with Live(spinner, refresh_per_second=10) as live:
+            with Live() as live:
                 live.update("Hold Ctrl to speak...")
                 
                 while voice_mode:
@@ -1384,8 +1481,8 @@ async def main():
                             user_input = await asyncio.wait_for(wait_for_voice_input(voice_input_queue), timeout=5.0)
                             
                             if user_input:
-                                live.update(f"[bold cyan]You (voice):[/bold cyan] {user_input}")
-                            
+                                live.update(f"[bold cyan]You (voice):[/bold cyan] {user_input}\n")
+                                
                                 if user_input.lower() == 'exit voicemode':
                                     voice_mode = False
                                     live.update("Exiting voice mode. Returning to text input.")
@@ -1393,26 +1490,31 @@ async def main():
                             
                                 response, _ = await chat_with_claude(user_input)
                                 
-                                # Extract and process ** tags
+                                # Extract and process ** tags for voice output
                                 speak_content = re.findall(r'\*\*(.*?)\*\*', response, re.DOTALL)
                                 for content in speak_content:
                                     text_to_speech(content)
                                 
-                                # Remove ** tags from the response
-                                response = re.sub(r'\*\*', '', response)
+                                # Display the full text response
                                 
+                                # print(response)# 
                                 live.update(Panel(Markdown(response), title="Claude's Response", title_align="left", expand=False))
-                                
+                                speak_content = ""
+                                response = ""
+                                user_input = ""
                             else:
                                 live.update("No speech detected. Please try again.")
+                                
                         
                         elif esc_pressed:
                             voice_mode = False
                             esc_pressed = False
+                            ctrl_pressed = False
                             live.update("Exiting voice mode. Returning to text input.")
+                            use_stream = True
                             break
-                        
-                        await asyncio.sleep(0.1)
+                        else:
+                            await asyncio.sleep(0.1)
                         
                     except asyncio.TimeoutError:
                         live.update("Voice input timed out. Please try again.")
@@ -1428,6 +1530,11 @@ async def main():
         if user_input.lower() == 'save chat':
             filename = save_chat()
             console.print(Panel(f"Chat saved to {filename}", title="Chat Saved", style="bold green"))
+
+        if user_input.lower() == 'reset':
+            reset_conversation()
+            continue
+        
         if user_input.lower() == 'exit':
             if voice_mode:
                 console.print(Panel("OK, you're back to typing.", title="Exiting Voice", style="bold blue"))
@@ -1497,6 +1604,13 @@ async def wait_for_voice_input(queue):
     while queue.empty():
         await asyncio.sleep(0.1)
     return queue.get()
+
+def speech_to_text_thread(voice_input_queue, stop_event):
+    while not stop_event.is_set():
+        result = speech_to_text()
+        if result and hasattr(result, 'text'):
+            voice_input_queue.put(result.text)
+        time.sleep(0.1)
 
 if __name__ == "__main__":
     asyncio.run(main())
