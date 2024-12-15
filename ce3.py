@@ -21,6 +21,7 @@ from api_router import APIRouter, APIConfig
 from tools.agent_manager import AgentManagerTool
 from tools.test_agent import TestAgentTool
 from tools.context_manager import ContextManagerTool
+from tools.agent_base import AgentBaseTool, AgentRole
 from prompt_toolkit import prompt
 from prompt_toolkit.styles import Style
 from prompts.system_prompts import SystemPrompts
@@ -163,7 +164,21 @@ class Assistant:
         for name, obj in inspect.getmembers(module):
             if (inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool):
                 try:
-                    tool_instance = obj()
+                    # Check if class is AgentBaseTool subclass
+                    if issubclass(obj, AgentBaseTool):
+                        # Generate unique agent ID and determine role
+                        agent_id = f"{name.lower()}_{len(tools)}"
+                        # Map tool name to role, fallback to CUSTOM
+                        role_map = {
+                            'TestAgentTool': AgentRole.TEST,
+                            'ContextManagerTool': AgentRole.CONTEXT,
+                            'AgentManagerTool': AgentRole.ORCHESTRATOR
+                        }
+                        role = role_map.get(name, AgentRole.CUSTOM)
+                        tool_instance = obj(agent_id=agent_id, role=role)
+                    else:
+                        tool_instance = obj()
+
                     tools.append({
                         "name": tool_instance.name,
                         "description": tool_instance.description,
