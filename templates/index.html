@@ -34,23 +34,29 @@
                     <div class="flex-1">
                         <div class="prose prose-slate max-w-none">
                             <p>Welcome to Claude Engineer v3! I'm here to help with programming and development tasks. I can create custom tools on demand to help with any task you need - just ask!</p>
-                            
+
                             <p>Available commands:</p>
                             <p>
                                 <span class="command-code">refresh</span> - Reload available tools<br>
                                 <span class="command-code">reset</span> - Clear conversation history<br>
                                 <span class="command-code">quit</span> - Exit the conversation
                             </p>
-                            
-                            
-                            
+
+
+
                             <p>How can I assist you today?</p>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-        
+
+        <!-- Agent Status Section -->
+        <div id="agent-status" class="bg-gray-50 border-t border-gray-200 py-4 px-4 sm:px-6 lg:px-8">
+            <h3 class="text-sm font-medium text-gray-500 mb-2">Active Agents</h3>
+            <!-- Agent info will be dynamically inserted here -->
+        </div>
+
         <!-- Add this right before the input-container div -->
         <div class="token-usage-container">
             <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -63,7 +69,7 @@
                 </div>
             </div>
         </div>
-        
+
         <!-- Fixed input area -->
         <div class="input-container">
             <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -85,7 +91,7 @@
                             </svg>
                         </button>
                         <input type="file" id="file-input" class="hidden" accept="image/*">
-                        <textarea id="message-input" 
+                        <textarea id="message-input"
                             class="flex-1 border-0 bg-transparent p-2 focus:ring-0 focus:outline-none resize-none max-h-32 overflow-y-auto min-h-[2.5rem]"
                             rows="1"
                             placeholder="Type something... (⌘ + Enter to send)"

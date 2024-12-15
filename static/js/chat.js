@@ -282,12 +282,16 @@ function appendAgentInfo(agentData) {
     contentDiv.className = 'flex-1';
 
     const agentDiv = document.createElement('div');
-    agentDiv.className = 'bg-gray-50 rounded-lg p-3 my-2 agent-info';
+    agentDiv.className = 'agent-info';
     agentDiv.innerHTML = `
-        <div class="font-semibold text-blue-600">Agent: ${agentData.name}</div>
-        <div class="text-gray-600 mt-1">Role: ${agentData.role}</div>
-        <div class="text-${agentData.status === 'Active' ? 'green' : 'yellow'}-600 mt-1">Status: ${agentData.status}</div>
-        ${agentData.current_task ? `<div class="text-gray-600 mt-1 italic">Task: ${agentData.current_task}</div>` : ''}
+        <div class="font-semibold">${agentData.name}</div>
+        <div class="text-gray-600">Role: ${agentData.role}</div>
+        <div class="text-${agentData.status === 'Active' ? 'green' : 'yellow'}-600">
+            Status: ${agentData.status}
+        </div>
+        ${agentData.current_task ?
+            `<div class="italic">Current Task: ${agentData.current_task}</div>` :
+            ''}
     `;
 
     contentDiv.appendChild(agentDiv);
@@ -295,8 +299,6 @@ function appendAgentInfo(agentData) {
     messageDiv.appendChild(contentDiv);
     messageWrapper.appendChild(messageDiv);
     messagesDiv.appendChild(messageWrapper);
-
-    // Scroll to bottom
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
@@ -366,4 +368,4 @@ window.addEventListener('load', async () => {
     } catch (error) {
         console.error('Error resetting conversation:', error);
     }
-});     
+});       
