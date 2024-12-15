@@ -25,7 +25,6 @@ class TestAgentTool(AgentBaseTool):
     Maintains a separate list representing the current app specification.
     """
 
-    name = "test_agent"
     description = """
     Manages test creation and tracking:
     - Creates unit tests for code changes
@@ -58,11 +57,12 @@ class TestAgentTool(AgentBaseTool):
         "required": ["action"]
     }
 
-    def __init__(self, agent_id: str = "test_agent"):
+    def __init__(self, agent_id: str = "test_agent", name: Optional[str] = None):
         """Initialize test agent tool"""
         super().__init__(
             agent_id=agent_id,
-            role=AgentRole.TEST
+            role=AgentRole.TEST,
+            name=name
         )
         self.logger = logging.getLogger(__name__)
 

@@ -1,26 +1,36 @@
 from abc import ABC, abstractmethod
-from typing import Dict
+from typing import Dict, Any, Optional
+import asyncio
 
 class BaseTool(ABC):
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Tool name that matches the regex ^[a-zA-Z0-9_-]{1,64}$"""
+    """Base class for all tools."""
+
+    async def __init__(self, name: Optional[str] = None):
+        self._name = name or self.__class__.__name__.lower()
+        await self.initialize()
+
+    async def initialize(self):
+        """Optional async initialization hook."""
         pass
+
+    @property
+    def name(self) -> str:
+        """Get the tool name."""
+        return self._name
 
     @property
     @abstractmethod
     def description(self) -> str:
-        """Detailed description of what the tool does"""
+        """Get the tool description."""
         pass
 
     @property
     @abstractmethod
-    def input_schema(self) -> Dict:
-        """JSON Schema defining the expected parameters"""
+    def input_schema(self) -> Dict[str, Any]:
+        """Get the input schema for the tool."""
         pass
 
     @abstractmethod
-    def execute(self, **kwargs) -> str:
-        """Execute the tool with given parameters"""
+    async def execute(self, **kwargs) -> Any:
+        """Execute the tool's main functionality."""
         pass

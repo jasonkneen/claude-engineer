@@ -18,7 +18,6 @@ class ContextManagerTool(AgentBaseTool):
     Handles context streams between agents while maintaining clarity.
     """
 
-    name = "context_manager"
     description = """
     Manages context compression and optimization:
     - Compresses verbose contexts
@@ -51,9 +50,9 @@ class ContextManagerTool(AgentBaseTool):
         "required": ["action"]
     }
 
-    def __init__(self):
+    def __init__(self, agent_id: str = "context_manager", role: AgentRole = AgentRole.CONTEXT, name: Optional[str] = None):
         """Initialize context manager with compression rules"""
-        super().__init__("context", AgentRole.CONTEXT)
+        super().__init__(agent_id=agent_id, role=role, name=name)
         self.contexts: Dict[str, Dict[str, Any]] = {}
         self.compression_rules: List[CompressionRule] = [
             CompressionRule(

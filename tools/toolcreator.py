@@ -6,11 +6,13 @@ import os
 from dotenv import load_dotenv
 import re
 import anthropic
+from typing import Optional
 
 load_dotenv()
 
 class ToolCreatorTool(BaseTool):
-    name = "toolcreator"
+    """Creates new tools based on natural language descriptions."""
+
     description = '''
     Creates a new tool based on a natural language description.
     Use this when you need a new capability that isn't available in current tools.
@@ -28,7 +30,9 @@ class ToolCreatorTool(BaseTool):
         "required": ["description"]
     }
 
-    def __init__(self):
+    def __init__(self, name: Optional[str] = None):
+        """Initialize tool creator with API client"""
+        super().__init__(name=name)
         self.client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
         self.console = Console()
         self.tools_dir = Path(__file__).parent.parent / "tools"  # Fixed path
