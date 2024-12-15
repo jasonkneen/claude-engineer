@@ -19,3 +19,4 @@ class Config:
     ENABLE_THINKING = True
     SHOW_TOOL_USAGE = True
     DEFAULT_TEMPERATURE = 0.7
+    DEFAULT_PROVIDER = "anthropic"  # Can be "anthropic" or "openai"
