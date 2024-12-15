@@ -1,12 +1,12 @@
 from tools.base import BaseTool
-from typing import Dict, Any, Optional, List
-import threading
+from typing import Dict, Any, Optional, List, Union
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, asdict, field
 from enum import Enum
-import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import time
 
 class AgentRole(Enum):
     ORCHESTRATOR = "orchestrator"
@@ -15,6 +15,8 @@ class AgentRole(Enum):
     FRONTEND = "frontend"
     BACKEND = "backend"
     DATABASE = "database"
+    TASK = "task"
+    CONVERSATION = "conversation"
     CUSTOM = "custom"
 
 @dataclass
@@ -25,6 +27,9 @@ class AgentState:
     current_task: Optional[str] = None
     context: Dict[str, Any] = field(default_factory=dict)
     data: Dict[str, Any] = field(default_factory=dict)  # Persistent data storage
+    progress: float = 0.0  # Track task completion progress (0-100)
+    task_history: List[Dict[str, Any]] = field(default_factory=list)  # Track completed tasks
+    start_time: Optional[float] = None  # Track when agent started current task
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -42,41 +47,60 @@ class AgentBaseTool(BaseTool):
     5. Communication through central server
     """
 
-    def __init__(self, agent_id: str, role: AgentRole, custom_role: Optional[str] = None):
+    def __init__(self, agent_id: str, role: Union[AgentRole, str], name: Optional[str] = None):
         """Initialize agent tool with ID and role.
 
         Args:
             agent_id: Unique identifier for the agent
-            role: Predefined role from AgentRole enum
-            custom_role: Custom role name if role is AgentRole.CUSTOM
+            role: Predefined role from AgentRole enum or string
+            name: Optional display name for the agent
         """
+        # Handle both enum and string roles
+        if isinstance(role, str):
+            try:
+                self.role = AgentRole[role.upper()]
+                self.custom_role = None
+            except KeyError:
+                if role.lower() == "custom":
+                    self.role = AgentRole.CUSTOM
+                    self.custom_role = None
+                else:
+                    self.role = AgentRole.CUSTOM
+                    self.custom_role = role
+        else:
+            self.role = role
+            self.custom_role = None
+
+        # Generate agent name using role and ID
+        display_role = self.custom_role or self.role.name
+        agent_name = name or f"agent_{display_role}_{agent_id}"
+        super().__init__(name=agent_name)
+
         self.agent_id = agent_id
-        self.role = role
-        self.custom_role = custom_role if role == AgentRole.CUSTOM else None
-        self._lock = threading.Lock()
+        self._lock = asyncio.Lock()  # Use asyncio.Lock instead of threading.Lock
         self._executor = ThreadPoolExecutor(max_workers=1)
         self.state = AgentState(
             agent_id=agent_id,
-            agent_type=role.value,
+            agent_type=self.custom_role or self.role.name,
             is_paused=False,
             current_task=None,
             context={},
-            data={'tests': {}} if role == AgentRole.TEST else {}  # Initialize tests dict for test agent
+            data={},
+            progress=0.0,
+            task_history=[],
+            start_time=None
         )
         self.logger = logging.getLogger(__name__)
 
-    @property
-    def name(self) -> str:
-        """Tool name based on agent ID and role"""
-        role_name = self.custom_role if self.role == AgentRole.CUSTOM else self.role.value
-        return f"agent_{role_name}_{self.agent_id}"
+    async def initialize(self):
+        """Async initialization method."""
+        await super().initialize()
 
     @property
     def description(self) -> str:
         """Detailed description of the agent's capabilities"""
-        role_desc = self.custom_role if self.role == AgentRole.CUSTOM else self.role.value
         return f"""
-        Agent-based tool for {role_desc} operations.
+        Agent-based tool for {self.role.value} operations.
         Supports:
         - Task execution and management
         - Context awareness
@@ -86,23 +110,14 @@ class AgentBaseTool(BaseTool):
         """
 
     @property
-    def input_schema(self) -> Dict:
+    def input_schema(self) -> Dict[str, Any]:
         """Schema defining expected input parameters"""
         return {
             "type": "object",
             "properties": {
-                "message": {
-                    "type": "string",
-                    "description": "Message or command for the agent"
-                },
-                "context": {
-                    "type": "object",
-                    "description": "Optional context data"
-                },
-                "task_id": {
-                    "type": "string",
-                    "description": "Optional task identifier"
-                },
+                "message": {"type": "string", "description": "Message or command for the agent"},
+                "context": {"type": "object", "description": "Optional context data"},
+                "task_id": {"type": "string", "description": "Optional task identifier"},
                 "api_provider": {
                     "type": "string",
                     "enum": ["anthropic", "openai"],
@@ -112,7 +127,7 @@ class AgentBaseTool(BaseTool):
             "required": ["message"]
         }
 
-    def execute(self, **kwargs) -> str:
+    async def execute(self, **kwargs) -> str:
         """Execute agent operations in a thread-safe manner.
 
         Args:
@@ -124,7 +139,7 @@ class AgentBaseTool(BaseTool):
         Returns:
             Execution result as string
         """
-        with self._lock:
+        async with self._lock:  # Use asyncio.Lock instead of threading.Lock
             if self.state.is_paused:
                 return f"Agent {self.agent_id} is currently paused"
 
@@ -136,22 +151,24 @@ class AgentBaseTool(BaseTool):
             # Update state
             self.state.current_task = task_id
             self.state.context = context
+            self.state.start_time = time.time() if task_id else None
+            self.state.progress = 0.0 if task_id else self.state.progress
 
             try:
-                # Execute directly without thread pool to maintain state
+                # Execute message processing asynchronously
                 if message:
-                    return self._process_message(
+                    return await self._process_message(
                         message=message,
                         context=context,
                         api_provider=api_provider
                     )
                 else:
-                    return self._execute_action(**kwargs)
+                    return await self._execute_action(**kwargs)
             except Exception as e:
-                logging.error(f"Error executing agent {self.agent_id}: {str(e)}")
+                self.logger.error(f"Error executing agent {self.agent_id}: {str(e)}")
                 return f"Error: {str(e)}"
 
-    def _process_message(self, message: str, context: Dict[str, Any], api_provider: str) -> str:
+    async def _process_message(self, message: str, context: Dict[str, Any], api_provider: str) -> str:
         """Process message through central server.
 
         This method should be overridden by specific agent implementations
@@ -159,22 +176,22 @@ class AgentBaseTool(BaseTool):
         """
         raise NotImplementedError("Agent implementations must override _process_message")
 
-    def pause(self) -> None:
+    async def pause(self) -> None:
         """Pause agent operations"""
-        with self._lock:
+        async with self._lock:
             self.state.is_paused = True
 
-    def resume(self) -> None:
+    async def resume(self) -> None:
         """Resume agent operations"""
-        with self._lock:
+        async with self._lock:
             self.state.is_paused = False
 
-    def get_state(self) -> Dict[str, Any]:
+    async def get_state(self) -> Dict[str, Any]:
         """Get current agent state"""
-        with self._lock:
+        async with self._lock:
             return self.state.to_dict()
 
-    def update_context(self, context: Dict[str, Any]) -> None:
+    async def update_context(self, context: Dict[str, Any]) -> None:
         """Update agent context"""
-        with self._lock:
+        async with self._lock:
             self.state.context = context

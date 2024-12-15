@@ -1,6 +1,16 @@
 let currentImageData = null;
 let currentMediaType = null;
 
+// Initialize dark mode from localStorage
+const darkMode = localStorage.getItem('darkMode') === 'true';
+document.documentElement.classList.toggle('dark', darkMode);
+
+// Dark mode toggle
+document.getElementById('dark-mode-toggle').addEventListener('click', () => {
+    document.documentElement.classList.toggle('dark');
+    localStorage.setItem('darkMode', document.documentElement.classList.contains('dark'));
+});
+
 // Auto-resize textarea
 const textarea = document.getElementById('message-input');
 textarea.addEventListener('input', function() {
@@ -12,10 +22,10 @@ function appendMessage(content, isUser = false) {
     const messagesDiv = document.getElementById('chat-messages');
     const messageWrapper = document.createElement('div');
     messageWrapper.className = 'message-wrapper';
-    
+
     const messageDiv = document.createElement('div');
     messageDiv.className = 'flex items-start space-x-4 space-y-1';
-    
+
     // Avatar
     const avatarDiv = document.createElement('div');
     if (isUser) {
@@ -25,14 +35,14 @@ function appendMessage(content, isUser = false) {
         avatarDiv.className = 'w-8 h-8 rounded-full ai-avatar flex items-center justify-center text-white font-bold text-xs';
         avatarDiv.textContent = 'CE';
     }
-    
+
     // Message content
     const contentDiv = document.createElement('div');
     contentDiv.className = 'flex-1';
-    
+
     const innerDiv = document.createElement('div');
     innerDiv.className = 'prose prose-slate max-w-none';
-    
+
     if (!isUser && content) {
         try {
             innerDiv.innerHTML = marked.parse(content);
@@ -43,7 +53,7 @@ function appendMessage(content, isUser = false) {
     } else {
         innerDiv.textContent = content || '';
     }
-    
+
     contentDiv.appendChild(innerDiv);
     messageDiv.appendChild(avatarDiv);
     messageDiv.appendChild(contentDiv);
@@ -265,44 +275,59 @@ function appendToolUsage(toolName) {
 
 // Add function to show agent information
 function appendAgentInfo(agentData) {
-    const messagesDiv = document.getElementById('chat-messages');
-    const messageWrapper = document.createElement('div');
-    messageWrapper.className = 'message-wrapper';
+    // Get template
+    const template = document.getElementById('agent-card-template');
+    const card = template.content.cloneNode(true);
 
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'flex items-start space-x-4';
+    // Set agent name and role
+    card.querySelector('h3').textContent = agentData.name;
 
-    // AI Avatar
-    const avatarDiv = document.createElement('div');
-    avatarDiv.className = 'w-8 h-8 rounded-full ai-avatar flex items-center justify-center text-white font-bold text-sm';
-    avatarDiv.textContent = '🤖';
+    // Set status badge
+    const statusBadge = card.querySelector('.px-2');
+    statusBadge.textContent = agentData.status;
+    statusBadge.classList.add(
+        agentData.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+    );
 
-    // Agent info content
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'flex-1';
+    // Set role
+    card.querySelector('p').textContent = `Role: ${agentData.role}`;
 
-    const agentDiv = document.createElement('div');
-    agentDiv.className = 'agent-info';
-    agentDiv.innerHTML = `
-        <div class="font-semibold">${agentData.name}</div>
-        <div class="text-gray-600">Role: ${agentData.role}</div>
-        <div class="text-${agentData.status === 'Active' ? 'green' : 'yellow'}-600">
-            Status: ${agentData.status}
-        </div>
-        ${agentData.current_task ?
-            `<div class="italic">Current Task: ${agentData.current_task}</div>` :
-            ''}
-    `;
+    // Set current task
+    card.querySelector('.task-display').textContent = agentData.current_task || 'No active task';
 
-    contentDiv.appendChild(agentDiv);
-    messageDiv.appendChild(avatarDiv);
-    messageDiv.appendChild(contentDiv);
-    messageWrapper.appendChild(messageDiv);
-    messagesDiv.appendChild(messageWrapper);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    // Set progress bar and percentage
+    const progressBar = card.querySelector('.progress-bar');
+    const progressPercentage = card.querySelector('.progress-percentage');
+    progressBar.style.width = `${agentData.progress}%`;
+    progressPercentage.textContent = `${agentData.progress}%`;
+
+    // Set runtime
+    const runtimeDisplay = card.querySelector('.runtime-display');
+    if (agentData.start_time) {
+        const runtime = Math.floor((Date.now() - new Date(agentData.start_time)) / 1000);
+        runtimeDisplay.textContent = `${runtime}s`;
+    }
+
+    // Update task history
+    const taskHistoryDiv = card.querySelector('.task-history');
+    if (agentData.task_history && agentData.task_history.length > 0) {
+        agentData.task_history.slice(-3).forEach(task => {
+            const taskEl = document.createElement('div');
+            taskEl.className = 'flex items-center space-x-1';
+            taskEl.innerHTML = `
+                <span class="w-2 h-2 rounded-full ${task.completed ? 'bg-green-400' : 'bg-gray-300'}"></span>
+                <span>${task.name}</span>
+            `;
+            taskHistoryDiv.appendChild(taskEl);
+        });
+    } else {
+        taskHistoryDiv.innerHTML = '<div class="text-gray-400">No previous tasks</div>';
+    }
+
+    // Add to agent list
+    document.getElementById('agent-list').appendChild(card);
 }
 
-// Add periodic agent status update
 function updateAgentStatus() {
     fetch('/agent_status')
         .then(response => {
@@ -313,11 +338,11 @@ function updateAgentStatus() {
         })
         .then(data => {
             if (data.agents && Array.isArray(data.agents)) {
-                // Remove existing agent info messages
-                const existingAgentInfos = document.querySelectorAll('.agent-info');
-                existingAgentInfos.forEach(el => el.closest('.message-wrapper')?.remove());
+                // Clear existing agent list
+                const agentList = document.getElementById('agent-list');
+                agentList.innerHTML = '';
 
-                // Add new agent info messages
+                // Add new agent cards
                 data.agents.forEach(agent => {
                     appendAgentInfo(agent);
                 });
@@ -328,13 +353,20 @@ function updateAgentStatus() {
         });
 }
 
-// Update agent status every 5 seconds
-setInterval(updateAgentStatus, 5000);
+// Start periodic agent status updates when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    // Initial agent status update
+    updateAgentStatus();
 
-// Initial agent status update
-updateAgentStatus();
+    // Set up periodic updates
+    const statusInterval = setInterval(updateAgentStatus, 5000);
 
-// Add at the top of the file
+    // Clean up interval when page is unloaded
+    window.addEventListener('unload', () => {
+        clearInterval(statusInterval);
+    });
+});
+
 window.addEventListener('load', async () => {
     try {
         // Reset the conversation when page loads
@@ -368,4 +400,61 @@ window.addEventListener('load', async () => {
     } catch (error) {
         console.error('Error resetting conversation:', error);
     }
-});       
+});
+
+// Flow creation form handler
+document.getElementById('flow-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const flowType = document.getElementById('flow-type').value;
+    const requirements = document.getElementById('flow-requirements').value.trim();
+
+    if (!requirements) {
+        alert('Please enter flow requirements');
+        return;
+    }
+
+    try {
+        const response = await fetch('/create-flow', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: flowType,
+                requirements: requirements
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Clear form
+            document.getElementById('flow-requirements').value = '';
+
+            // Show success message in chat
+            appendMessage(`Flow created successfully!\nType: ${flowType}\nRequirements: ${requirements}`);
+
+            // Update agent status to show new flow
+            updateAgentStatus();
+
+            // Update token usage if provided
+            if (data.token_usage) {
+                updateTokenUsage(data.token_usage.total_tokens, data.token_usage.max_tokens);
+            }
+        } else {
+            appendMessage(`Error creating flow: ${data.error}`);
+        }
+    } catch (error) {
+        console.error('Error creating flow:', error);
+        appendMessage('Error: Failed to create flow');
+    }
+});
+
+// Toggle flow form visibility
+document.getElementById('toggle-flow-form').addEventListener('click', () => {
+    const form = document.getElementById('flow-form');
+    form.classList.toggle('hidden');
+    const icon = document.querySelector('#toggle-flow-form svg');
+    icon.style.transform = form.classList.contains('hidden') ? 'rotate(180deg)' : '';
+}); 

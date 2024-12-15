@@ -42,8 +42,9 @@ class Assistant:
     - Tool execution upon request from model responses.
     """
 
-    def __init__(self):
-        if not getattr(Config, 'ANTHROPIC_API_KEY', None):
+    async def __init__(self, config=None):
+        self.config = config or Config
+        if not getattr(self.config, 'ANTHROPIC_API_KEY', None):
             raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
 
         # Initialize API router and clients
@@ -51,13 +52,13 @@ class Assistant:
         self.conversation_history: List[Dict[str, Any]] = []
         self.console = Console()
 
-        self.thinking_enabled = getattr(Config, 'ENABLE_THINKING', False)
-        self.temperature = getattr(Config, 'DEFAULT_TEMPERATURE', 0.7)
+        self.thinking_enabled = getattr(self.config, 'ENABLE_THINKING', False)
+        self.temperature = getattr(self.config, 'DEFAULT_TEMPERATURE', 0.7)
         self.total_tokens_used = 0
 
         # Initialize tools and agent manager
-        self.tools = self._load_tools()
-        self.agent_manager = AgentManagerTool()
+        self.tools = await self._load_tools()
+        self.agent_manager = await AgentManagerTool(agent_id="manager", role=AgentRole.ORCHESTRATOR)
 
     def _execute_uv_install(self, package_name: str) -> bool:
         """
@@ -290,7 +291,7 @@ class Assistant:
             return "[base64 data omitted]"
         return data
 
-    def _execute_tool(self, tool_use):
+    async def _execute_tool(self, tool_use):
         """
         Given a tool usage request (with tool name and inputs),
         dynamically load and execute the corresponding tool.
@@ -304,20 +305,20 @@ class Assistant:
             if tool_name in ['agent_manager', 'test_agent', 'context_manager']:
                 tool_instance = getattr(self, tool_name, None)
                 if tool_instance:
-                    result = tool_instance.execute(**tool_input)
+                    result = await tool_instance.execute(**tool_input)
                     tool_result = result
                 else:
                     tool_result = f"Agent tool not initialized: {tool_name}"
             else:
                 module = importlib.import_module(f'tools.{tool_name}')
-                tool_instance = self._find_tool_instance_in_module(module, tool_name)
+                tool_instance = await self._find_tool_instance_in_module(module, tool_name)
 
                 if not tool_instance:
                     tool_result = f"Tool not found: {tool_name}"
                 else:
                     # Execute the tool with the provided input
                     try:
-                        result = tool_instance.execute(**tool_input)
+                        result = await tool_instance.execute(**tool_input)
                         # Keep structured data intact
                         tool_result = result
                     except Exception as exec_err:
@@ -332,7 +333,7 @@ class Assistant:
             json.dumps(tool_result) if not isinstance(tool_result, str) else tool_result)
         return tool_result
 
-    def _find_tool_instance_in_module(self, module, tool_name: str):
+    async def _find_tool_instance_in_module(self, module, tool_name: str):
         """
         Search a given module for a tool class matching tool_name and return an instance of it.
         Handles both regular tools and agent-based tools with proper initialization.
@@ -350,9 +351,9 @@ class Assistant:
                             'AgentManagerTool': AgentRole.ORCHESTRATOR
                         }
                         role = role_map.get(name, AgentRole.CUSTOM)
-                        candidate_tool = obj(agent_id=agent_id, role=role)
+                        candidate_tool = await obj(agent_id=agent_id, role=role)
                     else:
-                        candidate_tool = obj()
+                        candidate_tool = await obj()
 
                     if candidate_tool.name == tool_name:
                         return candidate_tool
@@ -419,99 +420,77 @@ class Assistant:
                 self.console.print("\n[bold red]Token limit reached! Please reset the conversation.[/bold red]")
                 return "Token limit reached! Please type 'reset' to start a new conversation."
 
-            if response.stop_reason == "tool_use":
-                self.console.print("\n[bold yellow]  Handling Tool Use...[/bold yellow]\n")
+            # Handle tool calls in the response content
+            if hasattr(response, 'content') and isinstance(response.content, list):
+                for content_block in response.content:
+                    if hasattr(content_block, 'type') and content_block.type == 'tool_calls':
+                        tool_results = []
+                        for tool_call in content_block.tool_calls:
+                            result = self._execute_tool(tool_call)
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_call_id": tool_call.id,
+                                "content": result
+                            })
 
-                tool_results = []
-                if getattr(response, 'content', None) and isinstance(response.content, list):
-                    # Execute each tool in the response content
-                    for content_block in response.content:
-                        if content_block.type == "tool_use":
-                            result = self._execute_tool(content_block)
+                        # Add tool results to conversation
+                        self.conversation_history.append({
+                            "role": "assistant",
+                            "content": response.content
+                        })
+                        self.conversation_history.append({
+                            "role": "user",
+                            "content": tool_results
+                        })
+                        return await self._get_completion()
 
-                            # Handle structured data (like image blocks) vs text
-                            if isinstance(result, (list, dict)):
-                                tool_results.append({
-                                    "type": "tool_result",
-                                    "tool_use_id": content_block.id,
-                                    "content": result  # Keep structured data intact
-                                })
-                            else:
-                                # Convert text results to proper content blocks
-                                tool_results.append({
-                                    "type": "tool_result",
-                                    "tool_use_id": content_block.id,
-                                    "content": [{"type": "text", "text": str(result)}]
-                                })
+            # Handle final text response
+            if hasattr(response, 'content') and isinstance(response.content, list):
+                for content_block in response.content:
+                    if hasattr(content_block, 'type') and content_block.type == 'text':
+                        self.conversation_history.append({
+                            "role": "assistant",
+                            "content": response.content
+                        })
+                        return content_block.text
 
-                    # Append tool usage to conversation and continue
-                    self.conversation_history.append({
-                        "role": "assistant",
-                        "content": response.content
-                    })
-                    self.conversation_history.append({
-                        "role": "user",
-                        "content": tool_results
-                    })
-                    return await self._get_completion()  # Recursive call to continue the conversation
-
-                else:
-                    self.console.print("[red]No tool content received despite 'tool_use' stop reason.[/red]")
-                    return "Error: No tool content received"
-
-            # Final assistant response
-            if (getattr(response, 'content', None) and
-                isinstance(response.content, list) and
-                response.content):
-                final_content = response.content[0].text
-                self.conversation_history.append({
-                    "role": "assistant",
-                    "content": response.content
-                })
-                return final_content
-            else:
-                self.console.print("[red]No content in final response.[/red]")
-                return "No response content available."
+            self.console.print("[red]No valid content in response.[/red]")
+            return "No response content available."
 
         except Exception as e:
             logging.error(f"Error in _get_completion: {str(e)}")
             return f"Error: {str(e)}"
 
-    async def chat(self, user_input):
-        """
-        Process a chat message from the user.
-        user_input can be either a string (text-only) or a list (multimodal message)
-        """
-        # Handle special commands only for text-only messages
-        if isinstance(user_input, str):
-            if user_input.lower() == 'refresh':
-                self.refresh_tools()
-                return "Tools refreshed successfully!"
-            elif user_input.lower() == 'reset':
-                self.reset()
-                return "Conversation reset!"
-            elif user_input.lower() == 'quit':
-                return "Goodbye!"
-
+    async def chat(self, user_input: str) -> str:
+        """Process user input and return assistant response."""
         try:
-            # Add user message to conversation history
+            if user_input.lower() == 'reset':
+                return self.reset()
+            elif user_input.lower() == 'refresh':
+                self.refresh_tools()
+                return "Tools refreshed!"
+            elif user_input.lower() == 'tools':
+                self.display_available_tools()
+                return "Tools displayed above."
+
+            # Add user message to conversation
             self.conversation_history.append({
                 "role": "user",
-                "content": user_input  # This can be either string or list
+                "content": [{"type": "text", "text": user_input}]
             })
 
-            # Show thinking indicator if enabled
-            if self.thinking_enabled:
-                with Live(Spinner('dots', text='Thinking...', style="cyan"),
-                         refresh_per_second=10, transient=True):
-                    response = await self._get_completion()
-            else:
-                response = await self._get_completion()
+            # Get completion from API
+            response = await self._get_completion()
+
+            # Update conversation history
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": response
+            })
 
             return response
-
         except Exception as e:
-            logging.error(f"Error in chat: {str(e)}")
+            self.console.print(f"[red]Error in chat:[/red] {str(e)}")
             return f"Error: {str(e)}"
 
     def reset(self):
@@ -535,7 +514,7 @@ Available tools:
         self.display_available_tools()
 
 
-def main():
+async def main():
     """
     Entry point for the assistant CLI loop.
     Provides a prompt for user input and handles 'quit' and 'reset' commands.
@@ -573,7 +552,7 @@ Available tools:
                 assistant.reset()
                 continue
 
-            response = assistant.chat(user_input)
+            response = await assistant.chat(user_input)
             console.print("\n[bold purple]Claude Engineer:[/bold purple]")
             if isinstance(response, str):
                 safe_response = response.replace('[', '\\[').replace(']', '\\]')
@@ -588,4 +567,5 @@ Available tools:
 
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())

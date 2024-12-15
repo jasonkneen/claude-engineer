@@ -20,7 +20,6 @@ class AgentManagerTool(BaseTool):
     Supports creating, pausing, and orchestrating agents as tools.
     """
 
-    name = "agent_manager"
     description = """
     Manages agent lifecycle and team assembly:
     - Creates new agents with predefined or custom roles
@@ -58,8 +57,9 @@ class AgentManagerTool(BaseTool):
         "required": ["action"]
     }
 
-    def __init__(self):
+    def __init__(self, name: Optional[str] = None):
         """Initialize manager with API router and agent registry"""
+        super().__init__(name=name)
         self.api_router = APIRouter()
         self.agents: Dict[str, AgentBaseTool] = {}
         self._executor = ThreadPoolExecutor(max_workers=4)
@@ -109,24 +109,40 @@ class AgentManagerTool(BaseTool):
             return f"Agent {agent_id} already exists"
 
         try:
-            role = AgentRole(kwargs.get("role", "custom"))
+            role = kwargs.get("role", "custom")
+            custom_role = kwargs.get("custom_role")
+
+            # Handle role validation
+            if isinstance(role, str):
+                # Check if it's a predefined role
+                if role.upper() in [r.name for r in AgentRole]:
+                    try:
+                        role = AgentRole[role.upper()]
+                    except (KeyError, AttributeError):
+                        return f"Invalid role format: {role}"
+                elif role.lower() == "custom" and custom_role:
+                    role = AgentRole.CUSTOM
+                else:
+                    return f"Invalid role: {role}. Must be one of {[r.name for r in AgentRole]} or use role='custom' with custom_role parameter"
+
             config = AgentConfig(
                 role=role,
-                custom_role=kwargs.get("custom_role"),
+                custom_role=custom_role,
                 api_provider=kwargs.get("api_provider", "anthropic")
             )
 
             agent = AgentBaseTool(
                 agent_id=agent_id,
-                role=config.role,
-                custom_role=config.custom_role
+                role=role,
+                name=f"agent_{custom_role or role.name}_{agent_id}"
             )
             self.agents[agent_id] = agent
 
-            return f"Created agent {agent_id} with role {role.value}"
+            display_role = custom_role or agent.role.name
+            return f"Created agent {agent_id} with role {display_role}"
 
-        except ValueError as e:
-            return f"Invalid role: {str(e)}"
+        except Exception as e:
+            return f"Error creating agent: {str(e)}"
 
     def _pause_agent(self, agent_id: str) -> str:
         """Pause specified agent"""
@@ -152,9 +168,10 @@ class AgentManagerTool(BaseTool):
         result = []
         for agent_id, agent in self.agents.items():
             state = agent.get_state()
+            display_role = agent.custom_role or agent.role.name
             result.append(
                 f"Agent: {agent_id}\n"
-                f"Role: {agent.role.value}\n"
+                f"Role: {display_role}\n"
                 f"Status: {'Paused' if state['is_paused'] else 'Active'}\n"
                 f"Current task: {state['current_task'] or 'None'}\n"
             )

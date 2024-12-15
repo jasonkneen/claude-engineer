@@ -1,6 +1,6 @@
 import anthropic
 import openai
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -18,6 +18,8 @@ class APIConfig:
     max_tokens: int
     temperature: float = 0.7
     stream: bool = False
+    tools: Optional[List[Dict[str, Any]]] = None
+    system: Optional[str] = None
 
 class APIRouter:
     """Routes API requests to appropriate LLM providers.
