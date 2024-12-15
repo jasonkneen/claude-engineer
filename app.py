@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, url_for
 from ce3 import Assistant
+from tools.agent_base import AgentBaseTool
 import os
 from werkzeug.utils import secure_filename
 import base64
@@ -24,7 +25,7 @@ def chat():
     data = request.json
     message = data.get('message', '')
     image_data = data.get('image')  # Get the base64 image data
-    
+
     # Prepare the message content
     if image_data:
         # Create a message with both text and image in correct order
@@ -38,7 +39,7 @@ def chat():
                 }
             }
         ]
-        
+
         # Only add text message if there is actual text
         if message.strip():
             message_content.append({
@@ -48,17 +49,17 @@ def chat():
     else:
         # Text-only message
         message_content = message
-    
+
     try:
         # Handle the chat message with the appropriate content
         response = assistant.chat(message_content)
-        
+
         # Get token usage from assistant
         token_usage = {
             'total_tokens': assistant.total_tokens_used,
             'max_tokens': Config.MAX_CONVERSATION_TOKENS
         }
-        
+
         # Get the last used tool from the conversation history
         tool_name = None
         if assistant.conversation_history:
@@ -72,14 +73,14 @@ def chat():
                                 break
                     if tool_name:
                         break
-        
+
         return jsonify({
             'response': response,
             'thinking': False,
             'tool_name': tool_name,
             'token_usage': token_usage
         })
-        
+
     except Exception as e:
         return jsonify({
             'response': f"Error: {str(e)}",
@@ -92,32 +93,32 @@ def chat():
 def upload_file():
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
-    
+
     file = request.files['file']
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
-    
+
     if file and file.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        
+
         # Get the actual media type
         media_type = file.content_type or 'image/jpeg'  # Default to jpeg if not detected
-        
+
         # Convert image to base64
         with open(filepath, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
-        
+
         # Clean up the file
         os.remove(filepath)
-        
+
         return jsonify({
             'success': True,
             'image_data': encoded_string,
             'media_type': media_type
         })
-    
+
     return jsonify({'error': 'Invalid file type'}), 400
 
 @app.route('/reset', methods=['POST'])
@@ -125,6 +126,23 @@ def reset():
     # Reset the assistant's conversation history
     assistant.reset()
     return jsonify({'status': 'success'})
+
+@app.route('/agent_status', methods=['GET'])
+def agent_status():
+    try:
+        agent_statuses = []
+        for tool in assistant.tools:
+            if isinstance(tool, AgentBaseTool):
+                state = tool.get_state()
+                agent_statuses.append({
+                    'name': tool.name,
+                    'role': tool.role.value,
+                    'status': 'Active' if not state.is_paused else 'Paused',
+                    'current_task': state.current_task
+                })
+        return jsonify({'agents': agent_statuses})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=False) 

@@ -335,12 +335,29 @@ class Assistant:
     def _find_tool_instance_in_module(self, module, tool_name: str):
         """
         Search a given module for a tool class matching tool_name and return an instance of it.
+        Handles both regular tools and agent-based tools with proper initialization.
         """
         for name, obj in inspect.getmembers(module):
             if (inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool):
-                candidate_tool = obj()
-                if candidate_tool.name == tool_name:
-                    return candidate_tool
+                try:
+                    if issubclass(obj, AgentBaseTool):
+                        # Generate unique agent ID and determine role
+                        agent_id = f"{name.lower()}_{tool_name}"
+                        # Map tool name to role, fallback to CUSTOM
+                        role_map = {
+                            'TestAgentTool': AgentRole.TEST,
+                            'ContextManagerTool': AgentRole.CONTEXT,
+                            'AgentManagerTool': AgentRole.ORCHESTRATOR
+                        }
+                        role = role_map.get(name, AgentRole.CUSTOM)
+                        candidate_tool = obj(agent_id=agent_id, role=role)
+                    else:
+                        candidate_tool = obj()
+
+                    if candidate_tool.name == tool_name:
+                        return candidate_tool
+                except Exception as e:
+                    self.console.print(f"[red]Error initializing tool {name}:[/red] {str(e)}")
         return None
 
     def _display_token_usage(self, usage):

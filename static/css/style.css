@@ -128,12 +128,51 @@ code {
     font-size: 1rem;
 }
 
+/* Agent information styles */
+.agent-info {
+    background-color: #f8fafc;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin: 0.5rem 0;
+    border: 1px solid #e2e8f0;
+    transition: all 0.2s ease;
+}
+
+.agent-info:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.agent-info .font-semibold {
+    font-size: 0.875rem;
+    margin-bottom: 0.25rem;
+}
+
+.agent-info .text-gray-600 {
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
+
+.agent-info .text-green-600 {
+    color: #059669;
+}
+
+.agent-info .text-yellow-600 {
+    color: #d97706;
+}
+
+.agent-info .italic {
+    font-size: 0.8125rem;
+    color: #4b5563;
+    margin-top: 0.25rem;
+}
+
 /* Add responsive container styles */
 @media (max-width: 640px) {
     .input-container {
         padding: 0.75rem 0;
     }
-    
+
     .messages-container {
         padding: 0.75rem;
     }
