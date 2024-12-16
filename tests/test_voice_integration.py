@@ -7,7 +7,7 @@ import numpy as np
 
 @pytest.mark.skip(reason="PortAudio library not available")
 @pytest_asyncio.fixture
-async def voice_tool(mocker):
+async def voice_integration_fixture(mocker):
     """Create voice tool fixture with mocked TTS and STT."""
     # Mock TTS engine
     mock_tts = mocker.MagicMock()

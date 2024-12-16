@@ -1,223 +1,49 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Claude Engineer v3</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        dark: {
-                            DEFAULT: '#1a1a1a',
-                            lighter: '#2d2d2d',
-                            border: '#404040'
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-    <script src="https://unpkg.com/marked@4.0.0/marked.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
-    <script src="{{ url_for('static', filename='js/dark-mode.js') }}"></script>
-    <script>
-        // Configure marked to use highlight.js
-        marked.setOptions({
-            highlight: function(code, lang) {
-                if (lang && hljs.getLanguage(lang)) {
-                    return hljs.highlight(code, { language: lang }).value;
-                }
-                return hljs.highlightAuto(code).value;
-            }
-        });
-    </script>
+    <title>Claude Engineer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.24.1/themes/prism-tomorrow.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap">
 </head>
-<body class="bg-white dark:bg-gray-900 transition-colors duration-200">
-    <div class="chat-container min-h-screen">
-        <!-- Dark Mode Toggle -->
-        <div class="fixed top-4 right-4 z-50">
-            <button id="dark-mode-toggle" class="p-2 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-800 dark:text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-            </button>
-        </div>
-        <!-- Messages area -->
-        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 messages-container pr-96" id="chat-messages">
-            <!-- Initial message -->
-            <div class="message-wrapper initial-message">
-                <div class="flex items-start space-x-4 space-y-1">
-                    <div class="w-8 h-8 rounded-full ai-avatar flex items-center justify-center text-white font-bold text-xs">
-                        CE
-                    </div>
-                    <div class="flex-1">
-                        <div class="prose prose-slate max-w-none">
-                            <p>Welcome to Claude Engineer v3! I'm here to help with programming and development tasks. I can create custom tools on demand to help with any task you need - just ask!</p>
-
-                            <p>Available commands:</p>
-                            <p>
-                                <span class="command-code">refresh</span> - Reload available tools<br>
-                                <span class="command-code">reset</span> - Clear conversation history<br>
-                                <span class="command-code">quit</span> - Exit the conversation
-                            </p>
-
-                        
-                            <p>In case of any errors, they will be displayed below:</p>
-                            <div id="error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                                <span class="block sm:inline"></span>
-                            </div>
-                            
-                            <p>How can I assist you today?</p>
-                        </div>
-                    </div>
-                </div>
+<body>
+    <div class="app-container">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h1>Claude Engineer</h1>
+                <button id="theme-toggle" aria-label="Toggle dark mode">
+                    <span class="theme-icon">🌙</span>
+                </button>
             </div>
-        </div>
-
-        <!-- Agent Status Section -->
-        <div id="agent-status" class="fixed right-0 top-0 h-full w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 overflow-y-auto">
-            <div class="p-4">
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Agent Status</h2>
-                <div id="agent-list" class="space-y-4">
-                    <!-- Agent Card Template -->
-                    <template id="agent-card-template">
-                        <div class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 p-4">
-                            <div class="flex items-center justify-between mb-2">
-                                <h3 class="font-medium text-gray-900 dark:text-gray-100"></h3>
-                                <span class="px-2 py-1 text-sm rounded-full"></span>
-                            </div>
-                            <p class="text-sm text-gray-600 dark:text-gray-300 mb-2"></p>
-                            <div class="space-y-3">
-                                <div class="text-sm">
-                                    <span class="font-medium text-gray-700 dark:text-gray-300">Current Task:</span>
-                                    <span class="text-gray-600 dark:text-gray-300 task-display"></span>
-                                </div>
-                                <div class="space-y-1">
-                                    <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                                        <span>Progress</span>
-                                        <span class="progress-percentage">0%</span>
-                                    </div>
-                                    <div class="w-full bg-gray-100 dark:bg-gray-600 rounded-full h-2">
-                                        <div class="bg-blue-600 rounded-full h-2 progress-bar"></div>
-                                    </div>
-                                </div>
-                                <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                                    <span>Runtime</span>
-                                    <span class="runtime-display">0s</span>
-                                </div>
-                                <div class="mt-2 pt-2 border-t border-gray-100 dark:border-gray-600">
-                                    <div class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Recent Tasks</div>
-                                    <div class="task-history space-y-1 text-xs text-gray-600 dark:text-gray-400"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </template>
-                </div>
+            <div class="agent-list">
+                <!-- Agent list will be populated dynamically -->
             </div>
-        </div>
-
-        <!-- Flow Creation Interface -->
-        <div class="fixed bottom-24 right-0 w-80 p-4">
-            <div class="flow-creator rounded-lg p-6">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Create Flow</h2>
-                    <button id="toggle-flow-form" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 material-transition">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd"/>
-                        </svg>
-                    </button>
-                </div>
-                <form id="flow-form" class="space-y-4">
-                    <div id="error-message" class="hidden text-red-600 dark:text-red-400 text-sm mb-2"></div>
-                    <div>
-                        <label for="flow-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Flow Name</label>
-                        <input type="text" id="flow-name" class="form-input w-full rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400" required>
-                    </div>
-                    <div>
-                        <label for="flow-type" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Flow Type</label>
-                        <select id="flow-type" class="form-select w-full rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400">
-                            <option value="project" class="dark:bg-gray-700">Project Flow</option>
-                            <option value="task" class="dark:bg-gray-700">Task Flow</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="flow-description" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
-                        <textarea id="flow-description" rows="2" class="form-textarea w-full rounded-lg resize-none bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400" required></textarea>
-                    </div>
-                    <div>
-                        <label for="flow-steps" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Steps</label>
-                        <textarea id="flow-steps" rows="4" class="form-textarea w-full rounded-lg resize-none bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400" placeholder="Enter steps in JSON format: [{'type': 'action', 'content': 'step description'}]" required></textarea>
-                    </div>
-                    <button type="submit" class="btn-primary w-full font-medium rounded-lg py-2 px-4 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white">
-                        Create Flow
-                    </button>
-                </form>
-            </div>
-        </div>
-
-        <!-- Token Usage Container -->
-        <div class="token-usage-container">
-            <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex items-center space-x-4 text-sm text-gray-500">
-                    <div class="token-count">Total used: <span id="tokens-used">0</span> / <span id="max-tokens">200,000</span></div>
-                    <div class="token-bar-container">
-                        <div id="token-bar" class="token-bar" style="width: 0%"></div>
-                    </div>
-                    <div id="token-percentage" class="token-percentage">0%</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Fixed input area -->
-        <div class="input-container">
-            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-                <form id="chat-form" class="relative">
-                    <div id="image-preview" class="hidden mb-2">
-                        <div class="relative inline-block">
-                            <img id="preview-img" class="max-h-32 rounded-lg border border-gray-200 dark:border-gray-700" src="" alt="Preview">
-                            <button type="button" id="remove-image" class="absolute -top-2 -right-2 bg-white dark:bg-gray-800 rounded-full p-1 shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500 dark:text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="flex items-end space-x-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 mx-2">
-                        <button type="button" id="upload-btn" class="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-400">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
+        </nav>
+        
+        <main class="main-content">
+            <div class="chat-container">
+                <div id="chat-messages" class="messages"></div>
+                <div class="input-area">
+                    <div class="toolbar">
+                        <button id="upload-button" class="toolbar-button">
+                            <span>📎</span>
                         </button>
-                        <button type="button" id="voice-button" class="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-400">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                            </svg>
-                            <span class="sr-only">Voice Input</span>
-                        </button>
-                        <input type="file" id="file-input" class="hidden" accept="image/*">
-                        <textarea id="message-input"
-                            class="flex-1 border-0 bg-transparent p-2 focus:ring-0 focus:outline-none resize-none max-h-32 overflow-y-auto min-h-[2.5rem]"
-                            rows="1"
-                            placeholder="Type something... (⌘ + Enter to send)"
-                            style="height: 40px; max-height: 200px;"
-                        ></textarea>
-                        <button type="submit" class="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-400">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-                            </svg>
+                        <button id="voice-button" class="toolbar-button">
+                            <span>🎤</span>
                         </button>
                     </div>
-                </form>
+                    <div class="message-input-container">
+                        <textarea id="message-input" placeholder="Type a message..."></textarea>
+                        <button id="send-button">Send</button>
+                    </div>
+                </div>
             </div>
-        </div>
+        </main>
     </div>
-
-    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.24.1/prism.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </body>
 </html>

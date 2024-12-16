@@ -16,10 +16,10 @@ from .agent_base import AgentBaseTool, AgentRole
 @dataclass
 class TestSpec:
     name: str
-    code: str
-    description: str = ""
-    changes: List[str] = field(default_factory=list)
-    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    description: str
+    input_data: Any
+    expected_output: Any
+    # Remove __init__ constructor and let @dataclass handle it
 
 class TestAgentTool(AgentBaseTool):
     """Creates and tracks unit tests for all code changes.

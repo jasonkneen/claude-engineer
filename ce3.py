@@ -23,9 +23,10 @@ from tools.agent_manager import AgentManagerTool
 from tools.test_agent import TestAgentTool
 from tools.context_manager import ContextManagerTool
 from tools.agent_base import AgentBaseTool, AgentRole
-from prompt_toolkit import prompt
+from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
 from prompts.system_prompts import SystemPrompts
+from tools.voice_tool import VoiceTool, VoiceRole
 
 # Configure logging to only show ERROR level and above
 logging.basicConfig(
@@ -68,38 +69,38 @@ class Assistant:
     async def initialize(self):
         """Initialize assistant components."""
         try:
-            # Initialize API router only if not in test mode
-            if not self.test_mode:
-                # Initialize API router
-                self.api_router = APIRouter()
-                await self.api_router.setup()
-
-                # Initialize Anthropic client
-                if not getattr(Config, 'ANTHROPIC_API_KEY', None):
-                    raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
-
-                # Create custom httpx client without problematic parameters
-                http_client = httpx.Client(
-                    base_url="https://api.anthropic.com",
-                    timeout=60.0,
-                    limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
-                )
-
-                self.client = anthropic.Anthropic(
-                    api_key=Config.ANTHROPIC_API_KEY,
-                    http_client=http_client,
-                    max_retries=3,
-                    _strict_response_validation=True
-                )
-
-            # Initialize tools and agent manager
+            # Initialize tools first so they're available for API router config
             self.tools = await self._load_tools()
             self.agent_manager = AgentManagerTool(name="manager")
             await self.agent_manager.initialize()
 
+            # Initialize API router if not in test mode
+            if not self.test_mode:
+                await self._initialize_api_router()
+
         except Exception as e:
             self.logger.error(f"Failed to initialize assistant: {str(e)}")
             raise
+
+    async def _initialize_api_router(self):
+        """Initialize the API router with proper configuration."""
+        if not getattr(Config, 'ANTHROPIC_API_KEY', None):
+            raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
+
+        try:
+            api_config = APIConfig(
+                model=Config.MODEL,
+                max_tokens=Config.MAX_TOKENS,
+                temperature=self.temperature,
+                tools=self.tools,
+                system=f"{SystemPrompts.DEFAULT}\n\n{SystemPrompts.TOOL_USAGE}"
+            )
+            self.api_router = APIRouter()
+            await self.api_router.initialize(api_config)
+            await self.api_router.setup()
+        except Exception as e:
+            self.logger.error(f"Failed to initialize API router: {str(e)}")
+            raise ValueError(f"API router initialization failed: {str(e)}")
 
     def _execute_uv_install(self, package_name: str) -> bool:
         """
@@ -185,6 +186,12 @@ class Assistant:
         except Exception as overall_err:
             self.console.print(f"[red]Error in tool loading process:[/red] {str(overall_err)}")
 
+        try:
+            voice_tool = VoiceTool(agent_id="claude", role=VoiceRole.VOICE_CONTROL)
+            tools.append(voice_tool)
+        except Exception as e:
+            self.console.print(f"Error initializing tool VoiceTool: {str(e)}")
+
         return tools
 
     def _parse_missing_dependency(self, error_str: str) -> str:
@@ -230,25 +237,28 @@ class Assistant:
                 except Exception as tool_init_err:
                     self.console.print(f"[red]Error initializing tool {name}:[/red] {str(tool_init_err)}")
 
-    def refresh_tools(self):
+    async def refresh_tools(self):
         """
         Refresh the list of tools and show newly discovered tools.
         """
-        current_tool_names = {tool['name'] for tool in self.tools}
-        self.tools = self._load_tools()
-        new_tool_names = {tool['name'] for tool in self.tools}
+        current_tool_names = {tool.name for tool in self.tools}  # Fix access to tool name
+        self.tools = await self._load_tools()  # Await the coroutine
+        new_tool_names = {tool.name for tool in self.tools}  # Fix access to tool name
         new_tools = new_tool_names - current_tool_names
 
         if new_tools:
             self.console.print("\n")
             for tool_name in new_tools:
-                tool_info = next((t for t in self.tools if t['name'] == tool_name), None)
-                if tool_info:
-                    description_lines = tool_info['description'].strip().split('\n')
+                tool = next((t for t in self.tools if t.name == tool_name), None)  # Fix tool lookup
+                if tool:
+                    description = getattr(tool, 'description', '').strip()
+                    description_lines = description.split('\n')
                     formatted_description = '\n    '.join(line.strip() for line in description_lines)
                     self.console.print(f"[bold green]NEW[/bold green] 🔧 [cyan]{tool_name}[/cyan]:\n    {formatted_description}")
         else:
             self.console.print("\n[yellow]No new tools found[/yellow]")
+
+        return "Tools refreshed!"
 
     def display_available_tools(self):
         """Display available tools and their descriptions."""
@@ -442,6 +452,12 @@ class Assistant:
         Handles both text-only and multimodal messages.
         """
         try:
+            if self.test_mode:
+                return "Test Mode: API calls are disabled"
+
+            if not self.api_router:
+                raise ValueError("API router not initialized")
+
             # Route request through API router
             response = await self.api_router.route_request(
                 provider=Config.DEFAULT_PROVIDER,
@@ -458,93 +474,26 @@ class Assistant:
                 )
             )
 
-            # Update token usage based on response usage
-            if hasattr(response, 'usage') and response.usage:
-                message_tokens = response.usage.input_tokens + response.usage.output_tokens
+            # Update token usage from the response dictionary
+            if "usage" in response:
+                message_tokens = response["usage"]["input_tokens"] + response["usage"]["output_tokens"]
                 self.total_tokens_used += message_tokens
-                self._display_token_usage(response.usage)
+                self._display_token_usage(response["usage"])
 
             if self.total_tokens_used >= Config.MAX_CONVERSATION_TOKENS:
                 self.console.print("\n[bold red]Token limit reached! Please reset the conversation.[/bold red]")
                 return "Token limit reached! Please type 'reset' to start a new conversation."
 
-            # Handle tool calls in the response content
-            if hasattr(response, 'content') and isinstance(response.content, list):
-                for content_block in response.content:
-                    if hasattr(content_block, 'type') and content_block.type == 'tool_calls':
-                        tool_results = []
-                        for tool_call in content_block.tool_calls:
-                            result = self._execute_tool(tool_call)
-                            tool_results.append({
-                                "type": "tool_result",
-                                "tool_call_id": tool_call.id,
-                                "content": result
-                            })
+            # Extract text from content
+            if "content" in response and isinstance(response["content"], list):
+                for content_block in response["content"]:
+                    if content_block["type"] == "text":
+                        return content_block["text"]
 
-                        # Add tool results to conversation
-                        self.conversation_history.append({
-                            "role": "assistant",
-                            "content": response.content
-                        })
-                        self.conversation_history.append({
-                            "role": "user",
-                            "content": tool_results
-                        })
-                        return await self._get_completion()
-
-            # Handle final text response
-            if hasattr(response, 'content') and isinstance(response.content, list):
-                for content_block in response.content:
-                    if hasattr(content_block, 'type') and content_block.type == 'text':
-                        self.conversation_history.append({
-                            "role": "assistant",
-                            "content": response.content
-                        })
-                        return content_block.text
-
-            self.console.print("[red]No valid content in response.[/red]")
-            return "No response content available."
-
-            if response.stop_reason == "tool_use":
-                self.console.print("\n[bold yellow]  Handling Tool Use...[/bold yellow]\n")
-
-                tool_results = []
-                if getattr(response, 'content', None) and isinstance(response.content, list):
-                    # Execute each tool in the response content
-                    for content_block in response.content:
-                        if content_block.type == "tool_use":
-                            result = self._execute_tool(content_block)
-
-                            # Handle structured data (like image blocks) vs text
-                            if isinstance(result, (list, dict)):
-                                tool_results.append({
-                                    "type": "tool_result",
-                                    "tool_use_id": content_block.id,
-                                    "content": result  # Keep structured data intact
-                                })
-                            else:
-                                # Convert text results to proper content blocks
-                                tool_results.append({
-                                    "type": "tool_result",
-                                    "tool_use_id": content_block.id,
-                                    "content": [{"type": "text", "text": str(result)}]
-                                })
-
-            # Handle final text response
-            if hasattr(response, 'content') and isinstance(response.content, list):
-                for content_block in response.content:
-                    if hasattr(content_block, 'type') and content_block.type == 'text':
-                        self.conversation_history.append({
-                            "role": "assistant",
-                            "content": response.content
-                        })
-                        return content_block.text
-
-            self.console.print("[red]No valid content in response.[/red]")
             return "No response content available."
 
         except Exception as e:
-            logging.error(f"Error in _get_completion: {str(e)}")  # P24a9
+            logging.error(f"Error in _get_completion: {str(e)}")
             return f"Error: {str(e)}"
 
     async def chat(self, user_input: str) -> str:
@@ -553,8 +502,7 @@ class Assistant:
             if user_input.lower() == 'reset':
                 return self.reset()
             elif user_input.lower() == 'refresh':
-                self.refresh_tools()
-                return "Tools refreshed!"
+                return await self.refresh_tools()  # Await the coroutine
             elif user_input.lower() == 'tools':
                 self.display_available_tools()
                 return "Tools displayed above."
@@ -619,10 +567,11 @@ async def main():
     style = Style.from_dict({'prompt': 'orange'})
 
     try:
-        assistant = Assistant()
-    except ValueError as e:
+        # Create and initialize the assistant
+        assistant = await Assistant.create()
+    except (ValueError, Exception) as e:
         console.print(f"[bold red]Error:[/bold red] {str(e)}")
-        console.print("Please ensure ANTHROPIC_API_KEY is set correctly.")
+        console.print("Please ensure ANTHROPIC_API_KEY is set correctly and all dependencies are installed.")
         return
 
     welcome_text = """
@@ -639,7 +588,8 @@ Available tools:
 
     while True:
         try:
-            user_input = prompt("You: ", style=style).strip()
+            user_input = await prompt_async("You: ", style=style)
+            user_input = user_input.strip()
 
             if user_input.lower() == 'quit':
                 console.print("\n[bold blue]👋 Goodbye![/bold blue]")
@@ -661,49 +611,10 @@ Available tools:
         except EOFError:
             break
 
+async def prompt_async(message, style):
+    """Get user input asynchronously using prompt_toolkit."""
+    session = PromptSession()
+    return await session.prompt_async(message, style=style)
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   

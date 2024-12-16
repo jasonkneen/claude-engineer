@@ -5,9 +5,8 @@ import tempfile
 from unittest.mock import MagicMock
 from tools.voice_tool import VoiceTool, VoiceRole
 
-@pytest.mark.skip(reason="PortAudio library not available")
-@pytest.fixture
-def tts_engine(mocker):
+@pytest_asyncio.fixture
+async def tts_fixture(mocker):
     """Create mocked TTS engine fixture."""
     mock_engine = mocker.MagicMock()
     mock_engine.say = mocker.MagicMock()

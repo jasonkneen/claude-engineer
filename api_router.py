@@ -37,10 +37,17 @@ class APIRouter(AbstractContextManager):
         self.anthropic_client = None
         self.openai_client = None
         self.logger = logging.getLogger(__name__)
+        self.config = None
+
+    async def initialize(self, config: APIConfig):
+        """Initialize the router with configuration."""
+        self.config = config
+        self.anthropic_client = anthropic.AsyncAnthropic()
 
     async def setup(self) -> None:
         """Async setup of API clients"""
-        await self._setup_clients()
+        if not self.anthropic_client:
+            raise ValueError("API router not initialized")
 
     async def _setup_clients(self) -> None:
         """Set up API clients with proper error handling"""
@@ -94,6 +101,8 @@ class APIRouter(AbstractContextManager):
         Returns:
             API response as dict
         """
+        if not self.config:
+            raise ValueError("APIRouter not initialized")
         try:
             provider_enum = APIProvider(provider.lower())
             if config is None:
@@ -130,18 +139,40 @@ class APIRouter(AbstractContextManager):
     ) -> Dict[str, Any]:
         """Handle Anthropic API request"""
         try:
+            # Convert messages to Anthropic format
+            formatted_messages = []
+            for msg in messages:
+                if isinstance(msg["content"], str):
+                    content = [{"type": "text", "text": msg["content"]}]
+                elif isinstance(msg["content"], list):
+                    content = msg["content"]
+                else:
+                    content = [{"type": "text", "text": str(msg["content"])}]
+
+                formatted_messages.append({
+                    "role": msg["role"],
+                    "content": content
+                })
+
             response = await self.anthropic_client.messages.create(
                 model=config.model,
                 max_tokens=config.max_tokens,
                 temperature=config.temperature,
-                messages=messages
+                system=config.system,
+                messages=formatted_messages
             )
+            
+            # Format the response in a consistent structure
             return {
-                "content": response.content,
-                "usage": response.usage,
+                "content": [{"type": "text", "text": response.content[0].text}],
+                "usage": {
+                    "input_tokens": response.usage.input_tokens,
+                    "output_tokens": response.usage.output_tokens
+                },
                 "model": response.model,
                 "role": "assistant"
             }
+
         except Exception as e:
             self.logger.error(f"Anthropic API error: {str(e)}")
             raise
