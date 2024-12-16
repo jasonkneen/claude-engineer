@@ -75,7 +75,7 @@ export function ChatInput({ onSubmit, isLoading, className }: ChatInputProps) {
     <form
       onSubmit={handleSubmit}
       className={cn(
-        "flex items-end gap-2 border-t bg-background p-4 sticky bottom-0 backdrop-blur-sm",
+        "flex items-end gap-2 border-t bg-background/95 p-4 sticky bottom-0 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm",
         className
       )}
     >
@@ -85,7 +85,7 @@ export function ChatInput({ onSubmit, isLoading, className }: ChatInputProps) {
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Type a message... (Ctrl+B for bold, Ctrl+I for italic, Ctrl+K for code)"
-        className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex-1 resize-none rounded-md border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
         rows={1}
         style={{
           height: 'auto',
