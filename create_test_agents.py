@@ -4,7 +4,7 @@ from tools.context_manager import ContextManagerTool
 from ce3 import Assistant
 
 # Initialize the assistant to register our test agents
-assistant = Assistant()
+assistant = await Assistant.create()
 
 # Create and register test agents
 test_agent = TestAgentTool(agent_id='test_agent_1', role=AgentRole.TEST)

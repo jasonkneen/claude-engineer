@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 from dataclasses import dataclass
 from enum import Enum
+from contextlib import AbstractContextManager
 
 class APIProvider(Enum):
     ANTHROPIC = "anthropic"
@@ -21,21 +22,41 @@ class APIConfig:
     tools: Optional[List[Dict[str, Any]]] = None
     system: Optional[str] = None
 
-class APIRouter:
+class APIRouter(AbstractContextManager):
     """Routes API requests to appropriate LLM providers.
     Handles both Anthropic and OpenAI endpoints with async support.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize API clients and executor"""
-        self.anthropic_client = anthropic.Anthropic(
-            api_key=os.getenv('ANTHROPIC_API_KEY')
-        )
-        self.openai_client = openai.Client(
-            api_key=os.getenv('OPENAI_API_KEY')
-        )
         self._executor = ThreadPoolExecutor(max_workers=4)
-        self.logger = logging.getLogger(__name__)
+        self.anthropic_client = None
+        self.openai_client = None
+
+    async def setup(self) -> None:
+        """Async setup of API clients"""
+        await self._setup_clients()
+
+    async def _setup_clients(self) -> None:
+        """Set up API clients with proper error handling"""
+        anthropic_key = os.getenv('ANTHROPIC_API_KEY')
+        openai_key = os.getenv('OPENAI_API_KEY')
+
+        if not anthropic_key:
+            logger.error("Missing ANTHROPIC_API_KEY environment variable")
+            raise APIProviderError("Anthropic API key not found")
+
+        if not openai_key:
+            logger.error("Missing OPENAI_API_KEY environment variable")
+            raise APIProviderError("OpenAI API key not found")
+
+        try:
+            self.anthropic_client = anthropic.Anthropic(api_key=anthropic_key)
+            self.openai_client = openai.Client(api_key=openai_key)
+        except Exception as e:
+            logger.error(f"Failed to initialize API clients: {str(e)}")
+            self._executor.shutdown(wait=False)
+            raise APIProviderError(f"Failed to initialize API clients: {str(e)}")
 
     async def route_request(
         self,

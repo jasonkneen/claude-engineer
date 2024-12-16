@@ -29,7 +29,7 @@ agent_config = {}
 async def startup():
     """Initialize assistant and tools before serving."""
     global assistant, tools
-    assistant = await Assistant()
+    assistant = await Assistant.create()
     tools = await load_tools()
     for tool_name, tool in tools.items():
         assistant.tools.append(tool)
@@ -339,4 +339,4 @@ async def create_flow():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=False, port=5000, host='0.0.0.0')       
+    app.run(debug=False, port=5000, host='0.0.0.0')
