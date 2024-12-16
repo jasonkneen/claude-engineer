@@ -404,4 +404,61 @@ window.addEventListener('load', async () => {
     } catch (error) {
         console.error('Error resetting conversation:', error);
     }
+});
+
+// Flow creation form handler
+document.getElementById('flow-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const flowType = document.getElementById('flow-type').value;
+    const requirements = document.getElementById('flow-requirements').value.trim();
+
+    if (!requirements) {
+        alert('Please enter flow requirements');
+        return;
+    }
+
+    try {
+        const response = await fetch('/create-flow', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: flowType,
+                requirements: requirements
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Clear form
+            document.getElementById('flow-requirements').value = '';
+
+            // Show success message in chat
+            appendMessage(`Flow created successfully!\nType: ${flowType}\nRequirements: ${requirements}`);
+
+            // Update agent status to show new flow
+            updateAgentStatus();
+
+            // Update token usage if provided
+            if (data.token_usage) {
+                updateTokenUsage(data.token_usage.total_tokens, data.token_usage.max_tokens);
+            }
+        } else {
+            appendMessage(`Error creating flow: ${data.error}`);
+        }
+    } catch (error) {
+        console.error('Error creating flow:', error);
+        appendMessage('Error: Failed to create flow');
+    }
+});
+
+// Toggle flow form visibility
+document.getElementById('toggle-flow-form').addEventListener('click', () => {
+    const form = document.getElementById('flow-form');
+    form.classList.toggle('hidden');
+    const icon = document.querySelector('#toggle-flow-form svg');
+    icon.style.transform = form.classList.contains('hidden') ? 'rotate(180deg)' : '';
 }); 

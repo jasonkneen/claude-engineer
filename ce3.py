@@ -42,6 +42,15 @@ class Assistant:
     - Tool execution upon request from model responses.
     """
 
+
+    async def __init__(self, config=None):
+        self.config = config or Config
+        if not getattr(self.config, 'ANTHROPIC_API_KEY', None):
+            raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
+
+        # Initialize API router and clients
+        self.api_router = APIRouter()
+
     def __init__(self):
         # For testing purposes - bypass API key check if TEST_MODE is set
         self.test_mode = os.getenv('TEST_MODE', '').lower() == 'true'
@@ -326,6 +335,9 @@ class Assistant:
                         # Keep structured data intact
                         tool_result = result
                     except Exception as exec_err:
+                        tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
+
+                except Exception as exec_err:
                     logging.error(f"Error executing tool '{tool_name}': {str(exec_err)}")  # P1877
                         tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
         except ImportError:
@@ -463,6 +475,44 @@ class Assistant:
             self.console.print("[red]No valid content in response.[/red]")
             return "No response content available."
 
+            if response.stop_reason == "tool_use":
+                self.console.print("\n[bold yellow]  Handling Tool Use...[/bold yellow]\n")
+
+                tool_results = []
+                if getattr(response, 'content', None) and isinstance(response.content, list):
+                    # Execute each tool in the response content
+                    for content_block in response.content:
+                        if content_block.type == "tool_use":
+                            result = self._execute_tool(content_block)
+
+                            # Handle structured data (like image blocks) vs text
+                            if isinstance(result, (list, dict)):
+                                tool_results.append({
+                                    "type": "tool_result",
+                                    "tool_use_id": content_block.id,
+                                    "content": result  # Keep structured data intact
+                                })
+                            else:
+                                # Convert text results to proper content blocks
+                                tool_results.append({
+                                    "type": "tool_result",
+                                    "tool_use_id": content_block.id,
+                                    "content": [{"type": "text", "text": str(result)}]
+                                })
+
+            # Handle final text response
+            if hasattr(response, 'content') and isinstance(response.content, list):
+                for content_block in response.content:
+                    if hasattr(content_block, 'type') and content_block.type == 'text':
+                        self.conversation_history.append({
+                            "role": "assistant",
+                            "content": response.content
+                        })
+                        return content_block.text
+
+            self.console.print("[red]No valid content in response.[/red]")
+            return "No response content available."
+
         except Exception as e:
             logging.error(f"Error in _get_completion: {str(e)}")  # P24a9
             return f"Error: {str(e)}"
@@ -499,6 +549,12 @@ class Assistant:
                     response = self._get_completion()
             else:
                 response = self._get_completion()
+
+            # Update conversation history
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": response
+            })
 
             return response
         except Exception as e:
@@ -581,3 +637,5 @@ Available tools:
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
+
+   
