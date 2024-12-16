@@ -5,12 +5,13 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { SendIcon } from 'lucide-react'
 
-interface ChatInputProps extends React.HTMLAttributes<HTMLDivElement> {
+interface ChatInputProps {
   onSubmit: (message: string) => void
   isLoading?: boolean
+  className?: string
 }
 
-export function ChatInput({ onSubmit, isLoading, className, ...props }: ChatInputProps) {
+export function ChatInput({ onSubmit, isLoading, className }: ChatInputProps) {
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -77,7 +78,6 @@ export function ChatInput({ onSubmit, isLoading, className, ...props }: ChatInpu
         "flex items-end gap-2 border-t bg-background p-4 sticky bottom-0 backdrop-blur-sm",
         className
       )}
-      {...props}
     >
       <textarea
         ref={textareaRef}
