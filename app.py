@@ -8,10 +8,14 @@ import time
 from werkzeug.utils import secure_filename
 import base64
 from config import Config
+
 import importlib
 import inspect
 from typing import List, Type
 import asyncio
+
+import logging
+
 
 app = Quart(__name__, static_folder='static')
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -190,6 +194,7 @@ async def chat():
         })
 
     except Exception as e:
+        logging.error(f"Exception in chat route: {str(e)}")
         return jsonify({
             'response': f"Error: {str(e)}",
             'thinking': False,
@@ -228,6 +233,7 @@ async def upload_file():
         })
 
     return jsonify({'error': 'Invalid file type'}), 400
+
 
 @app.route('/reset', methods=['POST'])
 async def reset():

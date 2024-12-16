@@ -1,7 +1,6 @@
 import os
 from dotenv import load_dotenv
 import json
-from tavily import TavilyClient
 import base64
 from PIL import Image
 import io
@@ -300,6 +299,8 @@ automode = False
 
 # Global dictionary to store running processes
 running_processes = {}
+
+console = Console()
 
 # Constants
 CONTINUATION_EXIT_PHRASE = "AUTOMODE_COMPLETE"
