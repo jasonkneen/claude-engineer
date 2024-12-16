@@ -1,4 +1,5 @@
 import { ChatLayout } from '@/components/chat/chat-layout'
+import { ConnectionStatus } from '@/components/connection-status'
 import { ThemeToggle } from '@/components/theme-toggle'
 
 export const metadata = {
@@ -18,7 +19,6 @@ export default function Home() {
           </div>
         </div>
       </header>
-      </div>
       <div className="flex-1">
         <ChatLayout />
       </div>
