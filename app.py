@@ -259,10 +259,13 @@ async def reset():
 async def agent_status():
     """Get status of all agents."""
     try:
+        if not tools:  # Check if tools are initialized
+            await startup()  # Re-initialize if needed
+
         agent_statuses = []
-        for tool in tools.values():  # Use tools dict instead of assistant.tools
+        for tool in tools.values():
             if isinstance(tool, AgentBaseTool):
-                state = await tool.get_state()  # Await the async get_state method
+                state = await tool.get_state()
                 agent_statuses.append({
                     'id': tool.agent_id,
                     'name': tool.name,
@@ -272,7 +275,7 @@ async def agent_status():
                     'progress': state['progress'],
                     'task_history': state['task_history']
                 })
-        return jsonify({'agents': agent_statuses})
+        return jsonify(agent_statuses)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

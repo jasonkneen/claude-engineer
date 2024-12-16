@@ -68,12 +68,13 @@ class Assistant:
     async def initialize(self):
         """Initialize assistant components."""
         try:
-            # Initialize API router
-            self.api_router = APIRouter()
-            await self.api_router.setup()
-
-            # Initialize Anthropic client if not in test mode
+            # Initialize API router only if not in test mode
             if not self.test_mode:
+                # Initialize API router
+                self.api_router = APIRouter()
+                await self.api_router.setup()
+
+                # Initialize Anthropic client
                 if not getattr(Config, 'ANTHROPIC_API_KEY', None):
                     raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
 
@@ -120,13 +121,13 @@ class Assistant:
             self.console.print(f"[red]Failed to install {package_name}. Output:[/red] {result}")
             return False
 
-    async def _load_tools(self) -> List[Dict[str, Any]]:
+    async def _load_tools(self) -> List[BaseTool]:
         """
         Dynamically load all tool classes from the tools directory.
         If a dependency is missing, prompt the user to install it via uvpackagemanager.
 
         Returns:
-            A list of tools (dicts) containing their 'name', 'description', and 'input_schema'.
+            A list of BaseTool instances.
         """
         tools = []
         tools_path = getattr(Config, 'TOOLS_DIR', None)
@@ -197,10 +198,10 @@ class Assistant:
             missing_module = error_str
         return missing_module
 
-    async def _extract_tools_from_module(self, module, tools: List[Dict[str, Any]]) -> None:
+    async def _extract_tools_from_module(self, module, tools: List[Any]) -> None:
         """
         Given a tool module, find and instantiate all tool classes (subclasses of BaseTool).
-        Append them to the 'tools' list.
+        Append the tool instances to the 'tools' list.
         """
         for name, obj in inspect.getmembers(module):
             if (inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool):
@@ -223,11 +224,8 @@ class Assistant:
                     if hasattr(tool_instance, 'initialize'):
                         await tool_instance.initialize()
 
-                    tools.append({
-                        "name": tool_instance.name,
-                        "description": tool_instance.description,
-                        "input_schema": tool_instance.input_schema
-                    })
+                    # Store the tool instance directly
+                    tools.append(tool_instance)
                     self.console.print(f"[green]Loaded tool:[/green] {tool_instance.name}")
                 except Exception as tool_init_err:
                     self.console.print(f"[red]Error initializing tool {name}:[/red] {str(tool_init_err)}")
@@ -253,17 +251,16 @@ class Assistant:
             self.console.print("\n[yellow]No new tools found[/yellow]")
 
     def display_available_tools(self):
-        """
-        Print a list of currently loaded tools.
-        """
-        self.console.print("\n[bold cyan]Available tools:[/bold cyan]")
-        tool_names = [tool['name'] for tool in self.tools]
+        """Display available tools and their descriptions."""
+        tool_names = []
+        for tool in self.tools:
+            # All tools are now BaseTool instances
+            tool_names.append(tool.name)
+
         if tool_names:
-            formatted_tools = ", ".join([f"🔧 [cyan]{name}[/cyan]" for name in tool_names])
-        else:
-            formatted_tools = "No tools available."
-        self.console.print(formatted_tools)
-        self.console.print("\n---")
+            self.console.print("\nAvailable tools:")
+            for name in sorted(tool_names):
+                self._display_tool_usage(name)
 
     def _display_tool_usage(self, tool_name: str, input_data: Dict, result: str):
         """
@@ -665,6 +662,14 @@ Available tools:
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
+
+   
+
+   
+
+   
+
+   
 
    
 

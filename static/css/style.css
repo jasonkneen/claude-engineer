@@ -336,6 +336,71 @@ code {
     border-color: rgba(75, 85, 99, 0.5);
 }
 
+/* Dark mode form and content styles */
+.dark .prose p,
+.dark .prose {
+    color: #e5e7eb;
+}
+
+.dark .command-code {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: #34d399;
+}
+
+.dark .flow-creator {
+    background: rgba(31, 41, 55, 0.95);
+    border-color: rgba(55, 65, 81, 0.5);
+}
+
+.dark .token-usage-container {
+    background: rgba(31, 41, 55, 0.95);
+    border-color: rgba(55, 65, 81, 0.5);
+}
+
+.dark .token-bar-container {
+    background: rgba(55, 65, 81, 0.8);
+}
+
+.dark .token-bar {
+    background-color: #3b82f6;
+}
+
+.dark .token-bar.warning {
+    background-color: #f59e0b;
+}
+
+.dark .token-bar.danger {
+    background-color: #ef4444;
+}
+
+.dark textarea,
+.dark select,
+.dark input[type="text"] {
+    background-color: rgba(55, 65, 81, 0.8);
+    color: #e5e7eb;
+    border-color: rgba(75, 85, 99, 0.5);
+}
+
+.dark textarea:focus,
+.dark select:focus,
+.dark input[type="text"]:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.dark option {
+    background-color: #374151;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-thumb {
+    background: #4b5563;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+}
+
 /* Material Design Focus States */
 .focus-visible:focus {
     box-shadow: var(--md-shadow-2);
@@ -460,6 +525,12 @@ code {
         padding-right: 1rem !important;
     }
 }
+  
+  
+  
+  
+  
+  
   
   
   
