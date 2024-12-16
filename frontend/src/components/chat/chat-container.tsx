@@ -31,6 +31,14 @@ export function ChatContainer({ messages, className, ...props }: ChatContainerPr
       )}
       {...props}
     >
+      {messages.length === 0 && (
+        <div className="flex flex-col items-center justify-center h-full text-center">
+          <h2 className="text-2xl font-semibold tracking-tight">Welcome to Claude Engineer</h2>
+          <p className="text-muted-foreground mt-2">
+            Start a conversation by typing a message below.
+          </p>
+        </div>
+      )}
       {messages.map((message) => (
         <div
           key={message.id}
