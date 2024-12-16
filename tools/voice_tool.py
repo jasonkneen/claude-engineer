@@ -10,6 +10,7 @@ import threading
 import logging
 import time
 import os
+import asyncio
 
 class VoiceRole(Enum):
     TTS = "text_to_speech"
@@ -80,8 +81,9 @@ class VoiceTool(BaseTool):
             if not self.tts_engine:
                 self.logger.info("Initializing TTS engine...")
                 self.tts_engine = pyttsx3.init()
+                await asyncio.sleep(0.1)
                 self.tts_engine.setProperty('rate', 150)
-                self.tts_engine.setProperty('volume', 0.8)  # Set initial volume to 0.8
+                self.tts_engine.setProperty('volume', 0.8)
                 self.logger.info("TTS engine initialized successfully")
         except Exception as e:
             self.logger.error(f"Failed to initialize TTS engine: {str(e)}")

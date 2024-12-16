@@ -57,7 +57,7 @@ class TestAgentTool(AgentBaseTool):
         "required": ["action"]
     }
 
-    def __init__(self, agent_id: str = "test_agent", name: Optional[str] = None):
+    async def __init__(self, agent_id: str = "test_agent", name: Optional[str] = None):
         """Initialize test agent tool"""
         super().__init__(
             agent_id=agent_id,
@@ -67,7 +67,7 @@ class TestAgentTool(AgentBaseTool):
         self.logger = logging.getLogger(__name__)
 
         # Initialize tests in persistent state storage
-        with self._lock:
+        async with self._lock:  # Change to async with
             if 'tests' not in self.state.data:
                 self.state.data['tests'] = {}
             self.tests = self.state.data['tests']  # Reference to persistent storage

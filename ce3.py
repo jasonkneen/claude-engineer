@@ -51,20 +51,17 @@ class Assistant:
         # Initialize API router and clients
         self.api_router = APIRouter()
 
-    def __init__(self):
-        # For testing purposes - bypass API key check if TEST_MODE is set
+        # For testing purposes
         self.test_mode = os.getenv('TEST_MODE', '').lower() == 'true'
         if not self.test_mode:
             if not getattr(Config, 'ANTHROPIC_API_KEY', None):
                 raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
-            # Initialize Anthropics client
             self.client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
         else:
-            self.client = None  # Mock client for testing
+            self.client = None
 
-        self.conversation_history: List[Dict[str, Any]] = []
+        self.conversation_history = []
         self.console = Console()
-
         self.thinking_enabled = getattr(self.config, 'ENABLE_THINKING', False)
         self.temperature = getattr(self.config, 'DEFAULT_TEMPERATURE', 0.7)
         self.total_tokens_used = 0
@@ -323,28 +320,25 @@ class Assistant:
                 else:
                     tool_result = f"Agent tool not initialized: {tool_name}"
             else:
-                module = importlib.import_module(f'tools.{tool_name}')
-                tool_instance = await self._find_tool_instance_in_module(module, tool_name)
+                try:
+                    module = importlib.import_module(f'tools.{tool_name}')
+                    tool_instance = await self._find_tool_instance_in_module(module, tool_name)
 
-                if not tool_instance:
-                    tool_result = f"Tool not found: {tool_name}"
-                else:
-                    # Execute the tool with the provided input
-                    try:
-                        result = await tool_instance.execute(**tool_input)
-                        # Keep structured data intact
-                        tool_result = result
-                    except Exception as exec_err:
-                        tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
-
-                except Exception as exec_err:
-                    logging.error(f"Error executing tool '{tool_name}': {str(exec_err)}")  # P1877
-                        tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
-        except ImportError:
-            tool_result = f"Failed to import tool: {tool_name}"
-        except Exception as e:
-            logging.error(f"Error executing tool: {str(e)}")  # P1877
-            tool_result = f"Error executing tool: {str(e)}"
+                    if not tool_instance:
+                        tool_result = f"Tool not found: {tool_name}"
+                    else:
+                        # Execute the tool with the provided input
+                        try:
+                            result = await tool_instance.execute(**tool_input)
+                            # Keep structured data intact
+                            tool_result = result
+                        except Exception as exec_err:
+                            tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
+                except ImportError:
+                    tool_result = f"Failed to import tool: {tool_name}"
+                except Exception as e:
+                    logging.error(f"Error executing tool: {str(e)}")
+                    tool_result = f"Error executing tool: {str(e)}"
 
         # Display tool usage with proper handling of structured data
         self._display_tool_usage(tool_name, tool_input,
@@ -637,5 +631,9 @@ Available tools:
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
+
+   
+
+   
 
    
