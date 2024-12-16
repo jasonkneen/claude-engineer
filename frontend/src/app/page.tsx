@@ -1,4 +1,5 @@
 import { ChatLayout } from '@/components/chat/chat-layout'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 export const metadata = {
   title: 'Claude Engineer',
@@ -14,6 +15,7 @@ export default function Home() {
           <span className="text-sm text-muted-foreground">
             Connected to API
           </span>
+          <ThemeToggle />
         </div>
       </div>
       <div className="flex-1">
