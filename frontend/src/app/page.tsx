@@ -1,8 +1,9 @@
+import type { Metadata } from 'next'
 import { ChatLayout } from '@/components/chat/chat-layout'
 import { ConnectionStatus } from '@/components/connection-status'
 import { ThemeToggle } from '@/components/theme-toggle'
 
-export const metadata = {
+export const metadata: Metadata = {
   title: 'Claude Engineer',
   description: 'A self-improving assistant framework with tool creation',
 }
