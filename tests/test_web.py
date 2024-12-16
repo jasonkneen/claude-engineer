@@ -167,7 +167,7 @@ async def test_agent_configuration(mock_voice, client: QuartClient, voice_tool):
     assert response.status_code == 200
     data = await response.get_json()
     assert 'status' in data
-    assert data['status'] == 'updated'
+    assert data['status'] == 'success'
 
 @pytest.mark.asyncio
 async def test_voice_integration(client: QuartClient, voice_tool):

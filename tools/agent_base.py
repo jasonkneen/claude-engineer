@@ -19,6 +19,7 @@ class AgentRole(Enum):
     EXECUTOR = "executor"
     COORDINATOR = "coordinator"
     ORCHESTRATOR = "orchestrator"  # Role for orchestrating agent workflows
+    TASK = "task"  # Role for task execution
 
 @dataclass
 class AgentState:

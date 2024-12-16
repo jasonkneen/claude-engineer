@@ -62,6 +62,16 @@ async def handle_agent_config():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/update-agent-config', methods=['POST'])
+async def update_agent_config():
+    """Update agent configuration."""
+    try:
+        data = await request.get_json()
+        agent_config.update(data)
+        return jsonify({'status': 'success', 'config': agent_config})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # Initialize tools
 async def load_tools():
     """Load and initialize all tools from the tools directory."""
@@ -276,7 +286,10 @@ async def speak():
             return jsonify({'error': 'No text provided'}), 400
 
         voice_tool = VoiceTool(agent_id="tts_agent", role=VoiceRole.TTS, name="TTS Agent")
+        await voice_tool.initialize()  # Ensure initialization
         audio_path = await voice_tool.speak(text)
+        if not audio_path:
+            return jsonify({'error': 'Failed to generate audio'}), 500
         return jsonify({'status': 'success', 'audio_path': audio_path})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -284,36 +297,32 @@ async def speak():
 @app.route('/transcribe', methods=['POST'])
 async def transcribe():
     """Speech-to-text endpoint."""
-    if 'audio' not in await request.files:
-        return jsonify({'error': 'No audio file provided'}), 400
+    try:
+        files = await request.files
+        if 'audio' not in files:
+            return jsonify({'error': 'No audio file provided'}), 400
 
-    audio_file = (await request.files)['audio']
-    if audio_file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
+        audio_file = files['audio']
+        if not audio_file.filename:
+            return jsonify({'error': 'No selected file'}), 400
 
-    if audio_file:
-        filename = secure_filename(audio_file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        await audio_file.save(filepath)
+        # Save uploaded file temporarily
+        temp_path = os.path.join('static', 'audio', f'temp_{int(time.time())}.wav')
+        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+        await audio_file.save(temp_path)
 
         try:
             voice_tool = VoiceTool(agent_id="stt_agent", role=VoiceRole.STT, name="STT Agent")
-            text = await voice_tool.transcribe(filepath)
+            await voice_tool.initialize()
+            text = await voice_tool.transcribe(temp_path)
+            return jsonify({'status': 'success', 'text': text})
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
-            # Clean up the audio file
-            os.remove(filepath)
-
-            return jsonify({
-                'success': True,
-                'text': text
-            })
-        except Exception as e:
-            # Clean up on error
-            if os.path.exists(filepath):
-                os.remove(filepath)
-            return jsonify({'error': str(e)}), 500
-
-    return jsonify({'error': 'Invalid audio file'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/create-flow', methods=['POST'])
 async def create_flow():

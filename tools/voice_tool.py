@@ -143,10 +143,14 @@ class VoiceTool(BaseTool):
         """Set speech volume."""
         await self.initialize_tts()
         try:
-            # Set volume directly without verification
+            # Set volume and verify
             self.tts_engine.setProperty('volume', volume)
             await asyncio.sleep(0.1)  # Small delay for stability
-            return
+            current_volume = self.tts_engine.getProperty('volume')
+            if abs(current_volume - volume) > 0.01:
+                self.logger.warning(f"Volume not set correctly. Requested: {volume}, Current: {current_volume}")
+                return False
+            return True
         except Exception as e:
             self.logger.error(f"Failed to set volume: {str(e)}")
             raise RuntimeError(f"Failed to set volume: {str(e)}")

@@ -5,7 +5,30 @@ import os
 
 @pytest.mark.skip(reason="PortAudio library not available")
 @pytest_asyncio.fixture
-async def voice_tool():
+async def voice_tool(mocker):
+    """Create voice tool fixture with mocked TTS."""
+    # Mock TTS engine
+    mock_tts = mocker.MagicMock()
+    mock_tts.save_to_file = mocker.MagicMock(side_effect=lambda text, path: open(path, 'wb').write(b'test audio'))
+    mock_tts.runAndWait = mocker.MagicMock()
+
+    # Mock properties with proper type handling
+    properties = {'rate': 200, 'volume': 0.8}
+    def get_property(prop):
+        return float(properties[prop]) if prop == 'volume' else properties[prop]
+    def set_property(prop, val):
+        properties[prop] = float(val) if prop == 'volume' else val
+        return True
+
+    mock_tts.getProperty = mocker.MagicMock(side_effect=get_property)
+    mock_tts.setProperty = mocker.MagicMock(side_effect=set_property)
+
+    # Mock voices
+    mock_voices = [mocker.MagicMock(id=f'voice{i}') for i in range(2)]
+    mock_tts.getProperty.side_effect = lambda prop: mock_voices if prop == 'voices' else get_property(prop)
+
+    mocker.patch('pyttsx3.init', return_value=mock_tts)
+
     tool = VoiceTool(agent_id="test_voice", role=VoiceRole.VOICE_CONTROL)
     await tool.initialize_tts()
     return tool
@@ -16,10 +39,6 @@ async def test_voice_tool_initialization(voice_tool):
     assert voice_tool.role == VoiceRole.VOICE_CONTROL
     assert voice_tool.tts_engine is not None
     assert voice_tool.stt_model is None
-
-@pytest.mark.asyncio
-async def test_tts_initialization(voice_tool):
-    assert voice_tool.tts_engine is not None
 
 @pytest.mark.asyncio
 async def test_voice_properties(voice_tool):
