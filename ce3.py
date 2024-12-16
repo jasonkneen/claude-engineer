@@ -1,5 +1,6 @@
 # ce3.py
 import anthropic
+import httpx
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.live import Live
@@ -75,7 +76,20 @@ class Assistant:
             if not self.test_mode:
                 if not getattr(Config, 'ANTHROPIC_API_KEY', None):
                     raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
-                self.client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
+
+                # Create custom httpx client without problematic parameters
+                http_client = httpx.Client(
+                    base_url="https://api.anthropic.com",
+                    timeout=60.0,
+                    limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+                )
+
+                self.client = anthropic.Anthropic(
+                    api_key=Config.ANTHROPIC_API_KEY,
+                    http_client=http_client,
+                    max_retries=3,
+                    _strict_response_validation=True
+                )
 
             # Initialize tools and agent manager
             self.tools = await self._load_tools()
@@ -105,7 +119,7 @@ class Assistant:
             self.console.print(f"[red]Failed to install {package_name}. Output:[/red] {result}")
             return False
 
-    def _load_tools(self) -> List[Dict[str, Any]]:
+    async def _load_tools(self) -> List[Dict[str, Any]]:
         """
         Dynamically load all tool classes from the tools directory.
         If a dependency is missing, prompt the user to install it via uvpackagemanager.
@@ -135,7 +149,7 @@ class Assistant:
             for tool_name in core_tools:
                 try:
                     module = importlib.import_module(f'tools.{tool_name}')
-                    self._extract_tools_from_module(module, tools)
+                    await self._extract_tools_from_module(module, tools)
                 except ImportError as e:
                     self.console.print(f"[red]Failed to load core tool {tool_name}: {str(e)}[/red]")
 
@@ -146,7 +160,7 @@ class Assistant:
 
                 try:
                     module = importlib.import_module(f'tools.{module_info.name}')
-                    self._extract_tools_from_module(module, tools)
+                    await self._extract_tools_from_module(module, tools)
                 except ImportError as e:
                     missing_module = self._parse_missing_dependency(str(e))
                     self.console.print(f"\n[yellow]Missing dependency:[/yellow] {missing_module} for tool {module_info.name}")
@@ -157,7 +171,7 @@ class Assistant:
                         if success:
                             try:
                                 module = importlib.import_module(f'tools.{module_info.name}')
-                                self._extract_tools_from_module(module, tools)
+                                await self._extract_tools_from_module(module, tools)
                             except Exception as retry_err:
                                 self.console.print(f"[red]Failed to load tool after installation: {str(retry_err)}[/red]")
                         else:
@@ -182,7 +196,7 @@ class Assistant:
             missing_module = error_str
         return missing_module
 
-    def _extract_tools_from_module(self, module, tools: List[Dict[str, Any]]) -> None:
+    async def _extract_tools_from_module(self, module, tools: List[Dict[str, Any]]) -> None:
         """
         Given a tool module, find and instantiate all tool classes (subclasses of BaseTool).
         Append them to the 'tools' list.
@@ -204,6 +218,9 @@ class Assistant:
                         tool_instance = obj(agent_id=agent_id, role=role)
                     else:
                         tool_instance = obj()
+
+                    if hasattr(tool_instance, 'initialize'):
+                        await tool_instance.initialize()
 
                     tools.append({
                         "name": tool_instance.name,
@@ -647,6 +664,14 @@ Available tools:
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
+
+   
+
+   
+
+   
+
+   
 
    
 

@@ -49,23 +49,23 @@ class AgentBaseTool(ABC):
     5. Communication through central server
     """
 
-    def __init__(self, agent_id: str, role: Union[AgentRole, str] = AgentRole.TEST, name: Optional[str] = None):
+    def __init__(self, agent_id: str, role: Union[AgentRole, str] = AgentRole.TEST, name: Optional[str] = None, custom_role: Optional[str] = None):
         """Initialize agent base tool."""
         self.agent_id = agent_id
         self._paused = False
         self._lock = asyncio.Lock()
 
-        # Set up role first
+        # Set up role and custom_role
         if isinstance(role, str):
             try:
                 self.role = AgentRole[role.upper()]
-                self.custom_role = None
+                self.custom_role = custom_role
             except KeyError:
                 self.role = AgentRole.CUSTOM
-                self.custom_role = role.lower()
+                self.custom_role = role.lower() if not custom_role else custom_role
         else:
             self.role = role
-            self.custom_role = None
+            self.custom_role = custom_role
 
         # Set up name after role is initialized
         role_str = self.custom_role or self.role.value.lower()

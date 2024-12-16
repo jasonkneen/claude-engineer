@@ -296,32 +296,36 @@ async def speak():
 
 @app.route('/transcribe', methods=['POST'])
 async def transcribe():
-    """Speech-to-text endpoint."""
+    """Handle audio file transcription."""
     try:
-        files = await request.files
-        if 'audio' not in files:
+        if 'audio' not in request.files:
             return jsonify({'error': 'No audio file provided'}), 400
 
-        audio_file = files['audio']
-        if not audio_file.filename:
-            return jsonify({'error': 'No selected file'}), 400
+        audio_file = request.files['audio']
+        if not audio_file:
+            return jsonify({'error': 'Empty audio file'}), 400
 
-        # Save uploaded file temporarily
-        temp_path = os.path.join('static', 'audio', f'temp_{int(time.time())}.wav')
-        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-        await audio_file.save(temp_path)
+        # Save the uploaded file temporarily
+        temp_dir = os.path.join(os.path.dirname(__file__), 'static', 'temp')
+        os.makedirs(temp_dir, exist_ok=True)
+        temp_path = os.path.join(temp_dir, f"upload_{int(time.time())}.wav")
 
-        try:
-            voice_tool = VoiceTool(agent_id="stt_agent", role=VoiceRole.STT, name="STT Agent")
-            await voice_tool.initialize()
-            text = await voice_tool.transcribe(temp_path)
-            return jsonify({'status': 'success', 'text': text})
-        finally:
-            # Clean up temp file
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+        audio_file.save(temp_path)
+
+        # Initialize voice tool for transcription
+        voice_tool = VoiceTool(agent_id="transcription", role=VoiceRole.STT)
+        await voice_tool.initialize_stt()
+
+        # Transcribe the audio
+        text = await voice_tool.transcribe(temp_path)
+
+        # Clean up temp file
+        os.remove(temp_path)
+
+        return jsonify({'text': text}), 200
 
     except Exception as e:
+        logging.error(f"Transcription error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/create-flow', methods=['POST'])

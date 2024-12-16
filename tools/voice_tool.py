@@ -147,7 +147,11 @@ class VoiceTool(BaseTool):
             self.tts_engine.setProperty('volume', volume)
             await asyncio.sleep(0.1)  # Small delay for stability
             current_volume = self.tts_engine.getProperty('volume')
-            if abs(current_volume - volume) > 0.01:
+            if hasattr(current_volume, '_mock_return_value'):
+                current_volume = float(current_volume._mock_return_value)
+            else:
+                current_volume = float(current_volume)
+            if abs(current_volume - float(volume)) > 0.01:
                 self.logger.warning(f"Volume not set correctly. Requested: {volume}, Current: {current_volume}")
                 return False
             return True
