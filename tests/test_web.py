@@ -189,19 +189,20 @@ async def test_voice_integration(client: QuartClient, voice_tool):
     with open('tests/test_audio.wav', 'wb') as f:
         f.write(b'test audio data')
 
-    # Create test file data
+    # Create proper file storage object
     with open('tests/test_audio.wav', 'rb') as f:
         file_data = f.read()
 
-    # Create form data with file
-    form_data = {
-        'audio': ('test_audio.wav', file_data, 'audio/wav')
-    }
+    file = FileStorage(
+        stream=BytesIO(file_data),
+        filename='test_audio.wav',
+        content_type='audio/wav'
+    )
 
-    # Send multipart form request
+    # Send request with proper file storage object
     response = await client.post(
         '/transcribe',
-        files=form_data
+        files={'audio': file}
     )
     assert response.status_code == 200
     data = await response.get_json()
