@@ -26,7 +26,7 @@ export function ChatContainer({ messages, className, ...props }: ChatContainerPr
     <div
       ref={containerRef}
       className={cn(
-        "flex flex-col gap-4 overflow-y-auto p-4 h-[calc(100vh-12rem)]",
+        "flex flex-col gap-6 overflow-y-auto p-4 h-[calc(100vh-12rem)] bg-muted/10",
         className
       )}
       {...props}
@@ -41,13 +41,13 @@ export function ChatContainer({ messages, className, ...props }: ChatContainerPr
         >
           <div
             className={cn(
-              "rounded-lg px-4 py-2 max-w-[80%]",
+              "rounded-lg px-4 py-3 max-w-[80%] shadow-sm",
               message.role === "user"
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted"
+                ? "bg-primary text-primary-foreground ml-auto"
+                : "bg-card border"
             )}
           >
-            <div className="prose dark:prose-invert">
+            <div className="prose dark:prose-invert prose-sm max-w-none">
               {message.content}
             </div>
             {message.timestamp && (
