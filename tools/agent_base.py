@@ -20,6 +20,10 @@ class AgentRole(Enum):
     COORDINATOR = "coordinator"
     ORCHESTRATOR = "orchestrator"  # Role for orchestrating agent workflows
     TASK = "task"  # Role for task execution
+    CONVERSATION = "conversation"  # Role for conversation management
+    FRONTEND = "frontend"  # Role for frontend operations
+    BACKEND = "backend"  # Role for backend operations
+    DATABASE = "database"  # Role for database operations
 
 @dataclass
 class AgentState:

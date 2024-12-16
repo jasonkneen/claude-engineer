@@ -252,15 +252,18 @@ class Assistant:
 
     def display_available_tools(self):
         """Display available tools and their descriptions."""
+        self.logger.info("Available tools:")
         tool_names = []
         for tool in self.tools:
-            # All tools are now BaseTool instances
-            tool_names.append(tool.name)
+            try:
+                # Use the name property from BaseTool
+                tool_names.append(tool.name)
+            except AttributeError:
+                # Fallback to class name if name property is not available
+                tool_names.append(tool.__class__.__name__.lower())
 
         if tool_names:
-            self.console.print("\nAvailable tools:")
-            for name in sorted(tool_names):
-                self._display_tool_usage(name)
+            self.logger.info(f"Tools: {', '.join(sorted(tool_names))}")
 
     def _display_tool_usage(self, tool_name: str, input_data: Dict, result: str):
         """
@@ -662,6 +665,10 @@ Available tools:
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
+
+   
+
+   
 
    
 

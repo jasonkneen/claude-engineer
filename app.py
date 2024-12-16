@@ -119,7 +119,7 @@ async def load_tools():
                             await tool.initialize()
 
                         elif VoiceTool in obj.__mro__[1:]:  # Check if VoiceTool is in the inheritance chain
-                            tool = obj(agent_id=agent_id, role=VoiceRole.VOICE_CONTROL, name=f"Voice_{name}")
+                            tool = obj(agent_id=agent_id, role=VoiceRole.VOICE_CONTROL, name=f"voice_{agent_id}")
                             await tool.initialize()
 
                         elif BaseTool in obj.__mro__[1:]:  # Direct BaseTool subclasses
@@ -265,18 +265,24 @@ async def agent_status():
         agent_statuses = []
         for tool in tools.values():
             if isinstance(tool, AgentBaseTool):
-                state = await tool.get_state()
-                agent_statuses.append({
-                    'id': tool.agent_id,
-                    'name': tool.name,
-                    'role': tool.role.value,
-                    'status': 'Active' if not state['is_paused'] else 'Paused',
-                    'current_task': state['current_task'],
-                    'progress': state['progress'],
-                    'task_history': state['task_history']
-                })
-        return jsonify(agent_statuses)
+                try:
+                    state = await tool.get_state()
+                    agent_statuses.append({
+                        'id': tool.agent_id,
+                        'name': tool.name,
+                        'role': tool.role.value,
+                        'status': 'Active' if not state['is_paused'] else 'Paused',
+                        'current_task': state['current_task'],
+                        'progress': state['progress'],
+                        'task_history': state['task_history']
+                    })
+                except Exception as e:
+                    logging.error(f"Error getting state for agent {tool.agent_id}: {str(e)}")
+                    continue
+
+        return jsonify({'agents': agent_statuses})
     except Exception as e:
+        logging.error(f"Error in agent_status: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/speak', methods=['POST'])
