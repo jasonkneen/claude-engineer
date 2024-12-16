@@ -3,13 +3,21 @@ import pytest_asyncio
 from tools.agent_manager import AgentManagerTool, AgentConfig
 from tools.agent_base import AgentRole
 from unittest.mock import Mock, patch, AsyncMock
+import anthropic
+import openai
 
 @pytest_asyncio.fixture
 async def agent_manager():
     """Create agent manager fixture."""
-    with patch('openai.Client'), patch('anthropic.Anthropic'):
+    # Mock API clients
+    with patch('anthropic.Anthropic', return_value=AsyncMock()) as mock_anthropic, \
+         patch('openai.Client', return_value=AsyncMock()) as mock_openai, \
+         patch.dict('os.environ', {
+            'ANTHROPIC_API_KEY': 'test_anthropic_key',
+            'OPENAI_API_KEY': 'test_openai_key'
+         }):
         manager = AgentManagerTool()
-        await manager.initialize()
+        await manager.setup()  # Initialize the manager
         yield manager
         await manager.close()
 

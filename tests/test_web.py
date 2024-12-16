@@ -28,12 +28,13 @@ async def app():
     mock_assistant.tools = []
     mock_assistant.initialize = AsyncMock()
 
-    # Create async factory function
-    async def async_mock_assistant():
-        await mock_assistant.initialize()
-        return mock_assistant
+    # Create mock Assistant class with create classmethod
+    class MockAssistant:
+        @classmethod
+        async def create(cls, config=None):
+            return mock_assistant
 
-    with patch('app.Assistant', new=async_mock_assistant):
+    with patch('app.Assistant', MockAssistant):
         await app.startup()  # Initialize assistant
         return app
 

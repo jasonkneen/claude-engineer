@@ -142,7 +142,14 @@ class VoiceTool(BaseTool):
     async def set_volume(self, volume: float = 0.9):
         """Set speech volume."""
         await self.initialize_tts()
-        self.tts_engine.setProperty('volume', volume)
+        try:
+            # Set volume directly without verification
+            self.tts_engine.setProperty('volume', volume)
+            await asyncio.sleep(0.1)  # Small delay for stability
+            return
+        except Exception as e:
+            self.logger.error(f"Failed to set volume: {str(e)}")
+            raise RuntimeError(f"Failed to set volume: {str(e)}")
 
     async def _speak(self, text: str) -> str:
         """Internal method to speak text."""

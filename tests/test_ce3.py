@@ -11,10 +11,20 @@ async def assistant():
     config = Config()
     config.agent_id = "test_assistant"
     config.role = "TEST"  # Use TEST role for testing
+    config.test_mode = True  # Enable test mode
 
-    # Mock API calls
-    with patch('ce3.APIRouter') as mock_router:
-        mock_router.return_value.route_request = AsyncMock(return_value="Test response")
+    # Create mock API router with async methods
+    mock_router = AsyncMock()
+    mock_router.setup = AsyncMock()
+    mock_router.route_request = AsyncMock(return_value={
+        "content": "Test response",
+        "usage": {"total_tokens": 10},
+        "model": "test-model",
+        "role": "assistant"
+    })
+
+    # Mock API router class
+    with patch('ce3.APIRouter', return_value=mock_router):
         assistant = Assistant(config)
         await assistant.initialize()  # Ensure proper async initialization
         await assistant.initialize_tools()  # Initialize tools with proper parameters
@@ -25,34 +35,32 @@ async def test_assistant_chat_coroutine(assistant):
     """Test that Assistant.chat coroutine is properly awaited."""
     test_input = "Hello, this is a test message"
 
-    # Mock API router response
-    with patch('ce3.APIRouter') as mock_router:
-        mock_router.return_value.route_request = AsyncMock(return_value="Test response")
+    # Test direct chat call
+    response = await assistant.chat(test_input)
+    assert isinstance(response, str)
+    assert len(response) > 0
 
-        # Test direct chat call
-        response = await assistant.chat(test_input)
-        assert isinstance(response, str)
-        assert len(response) > 0
+    # Test chat in event loop
+    async def chat_in_loop():
+        return await assistant.chat(test_input)
 
-        # Test chat in event loop
-        async def chat_in_loop():
-            return await assistant.chat(test_input)
-
-        response = await chat_in_loop()
-        assert isinstance(response, str)
-        assert len(response) > 0
+    response = await chat_in_loop()
+    assert isinstance(response, str)
+    assert len(response) > 0
 
 @pytest.mark.asyncio
 async def test_assistant_chat_from_app(assistant):
     """Test Assistant.chat when called from app context."""
     from app import app
 
-    # Mock API router and assistant in app context
-    with patch('app.Assistant') as mock_assistant_class:
-        mock_assistant = AsyncMock()
-        mock_assistant.chat = AsyncMock(return_value="Test response from app")
-        mock_assistant_class.return_value = mock_assistant
+    # Create mock assistant for app context
+    mock_assistant = AsyncMock()
+    mock_assistant.chat = AsyncMock(return_value="Test response from app")
+    mock_assistant.initialize = AsyncMock()
+    mock_assistant.initialize_tools = AsyncMock()
 
+    # Mock Assistant class in app context
+    with patch('app.Assistant', return_value=mock_assistant):
         test_client = app.test_client()
         test_message = {
             "message": "Test message from app context",

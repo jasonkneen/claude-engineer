@@ -1,14 +1,45 @@
 import pytest
+import pytest_asyncio
 import asyncio
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 from api_router import APIRouter, APIConfig, APIProvider
 import anthropic
 import openai
 
-@pytest.fixture
-def api_router():
-    with patch('openai.Client'), patch('anthropic.Anthropic'):
-        yield APIRouter()
+@pytest_asyncio.fixture
+async def api_router():
+    """Create API router fixture."""
+    router = APIRouter()
+
+    # Create mocks before setup
+    mock_openai_instance = AsyncMock()
+    mock_openai_instance.chat.completions.create = AsyncMock(
+        return_value=Mock(
+            choices=[Mock(message=Mock(content="Test response"))],
+            usage={"prompt_tokens": 10, "completion_tokens": 20},
+            model="gpt-4-turbo-preview"
+        )
+    )
+
+    mock_anthropic_instance = AsyncMock()
+    mock_anthropic_instance.messages.create = AsyncMock(
+        return_value=Mock(
+            content=[{"text": "Test response"}],
+            usage={"input_tokens": 10, "output_tokens": 20},
+            model="claude-3-sonnet-20240229"
+        )
+    )
+
+    # Mock environment variables and API clients
+    with patch.dict('os.environ', {
+        'ANTHROPIC_API_KEY': 'test_anthropic_key',
+        'OPENAI_API_KEY': 'test_openai_key'
+    }), \
+    patch('anthropic.Anthropic', return_value=mock_anthropic_instance), \
+    patch('openai.Client', return_value=mock_openai_instance):
+        await router.setup()
+        yield router
+        await router.close()
 
 @pytest.fixture
 def mock_anthropic_response():

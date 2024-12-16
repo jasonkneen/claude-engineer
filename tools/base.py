@@ -5,12 +5,18 @@ import asyncio
 class BaseTool(ABC):
     """Base class for all tools."""
 
-    async def __init__(self, name: Optional[str] = None):
+    def __init__(self, name: Optional[str] = None):
         self._name = name or self.__class__.__name__.lower()
-        await self.initialize()
+        self._initialized = False
 
     async def initialize(self):
         """Optional async initialization hook."""
+        if not self._initialized:
+            await self._initialize()
+            self._initialized = True
+
+    async def _initialize(self):
+        """Internal async initialization hook for subclasses to override."""
         pass
 
     @property

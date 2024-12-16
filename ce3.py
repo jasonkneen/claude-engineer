@@ -42,33 +42,48 @@ class Assistant:
     - Tool execution upon request from model responses.
     """
 
-
-    async def __init__(self, config=None):
+    def __init__(self, config=None):
+        """Initialize assistant with basic attributes."""
         self.config = config or Config
-        if not getattr(self.config, 'ANTHROPIC_API_KEY', None):
-            raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
-
-        # Initialize API router and clients
-        self.api_router = APIRouter()
-
-        # For testing purposes
         self.test_mode = os.getenv('TEST_MODE', '').lower() == 'true'
-        if not self.test_mode:
-            if not getattr(Config, 'ANTHROPIC_API_KEY', None):
-                raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
-            self.client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
-        else:
-            self.client = None
-
+        self.client = None
+        self.api_router = None
         self.conversation_history = []
         self.console = Console()
         self.thinking_enabled = getattr(self.config, 'ENABLE_THINKING', False)
         self.temperature = getattr(self.config, 'DEFAULT_TEMPERATURE', 0.7)
         self.total_tokens_used = 0
+        self.tools = []
+        self.agent_manager = None
+        self.logger = logging.getLogger(__name__)
 
-        # Initialize tools and agent manager
-        self.tools = await self._load_tools()
-        self.agent_manager = await AgentManagerTool(agent_id="manager", role=AgentRole.ORCHESTRATOR)
+    @classmethod
+    async def create(cls, config=None):
+        """Create and initialize a new assistant instance."""
+        instance = cls(config)
+        await instance.initialize()
+        return instance
+
+    async def initialize(self):
+        """Initialize assistant components."""
+        try:
+            # Initialize API router
+            self.api_router = APIRouter()
+            await self.api_router.setup()
+
+            # Initialize Anthropic client if not in test mode
+            if not self.test_mode:
+                if not getattr(Config, 'ANTHROPIC_API_KEY', None):
+                    raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
+                self.client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
+
+            # Initialize tools and agent manager
+            self.tools = await self._load_tools()
+            self.agent_manager = await AgentManagerTool(agent_id="manager", role=AgentRole.ORCHESTRATOR)
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize assistant: {str(e)}")
+            raise
 
     def _execute_uv_install(self, package_name: str) -> bool:
         """
@@ -339,6 +354,9 @@ class Assistant:
                 except Exception as e:
                     logging.error(f"Error executing tool: {str(e)}")
                     tool_result = f"Error executing tool: {str(e)}"
+        except Exception as e:
+            tool_result = f"Error executing tool '{tool_name}': {str(e)}"
+            logging.error(f"Error in _execute_tool: {str(e)}")
 
         # Display tool usage with proper handling of structured data
         self._display_tool_usage(tool_name, tool_input,
@@ -523,13 +541,12 @@ class Assistant:
                 self.display_available_tools()
                 return "Tools displayed above."
 
-        if self.test_mode:
-            # Mock response for test mode
-            if isinstance(user_input, str) and 'createfolderstool' in user_input.lower():
-                return "Test Mode: I would create a folder using createfolderstool, but I'm in test mode."
-            return "Test Mode: This is a mock response. The application is working correctly, but API calls are disabled."
+            if self.test_mode:
+                # Mock response for test mode
+                if isinstance(user_input, str) and 'createfolderstool' in user_input.lower():
+                    return "Test Mode: I would create a folder using createfolderstool, but I'm in test mode."
+                return "Test Mode: This is a mock response. The application is working correctly, but API calls are disabled."
 
-        try:
             # Add user message to conversation history
             self.conversation_history.append({
                 "role": "user",
@@ -540,9 +557,9 @@ class Assistant:
             if self.thinking_enabled:
                 with Live(Spinner('dots', text='Thinking...', style="cyan"),
                          refresh_per_second=10, transient=True):
-                    response = self._get_completion()
+                    response = await self._get_completion()
             else:
-                response = self._get_completion()
+                response = await self._get_completion()
 
             # Update conversation history
             self.conversation_history.append({
@@ -554,7 +571,6 @@ class Assistant:
         except Exception as e:
             self.console.print(f"[red]Error in chat:[/red] {str(e)}")
             return f"Error: {str(e)}"
-
     def reset(self):
         """
         Reset the assistant's memory and token usage.
@@ -631,6 +647,18 @@ Available tools:
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
+
+   
+
+   
+
+   
+
+   
+
+   
+
+   
 
    
 

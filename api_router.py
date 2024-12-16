@@ -8,6 +8,10 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from contextlib import AbstractContextManager
+import httpx
+
+class APIProviderError(Exception):
+    pass
 
 class APIProvider(Enum):
     ANTHROPIC = "anthropic"
@@ -32,7 +36,7 @@ class APIRouter(AbstractContextManager):
         self._executor = ThreadPoolExecutor(max_workers=4)
         self.anthropic_client = None
         self.openai_client = None
-        self.logger = logging.getLogger(__name__)  # Add logger initialization
+        self.logger = logging.getLogger(__name__)
 
     async def setup(self) -> None:
         """Async setup of API clients"""
@@ -44,18 +48,33 @@ class APIRouter(AbstractContextManager):
         openai_key = os.getenv('OPENAI_API_KEY')
 
         if not anthropic_key:
-            logger.error("Missing ANTHROPIC_API_KEY environment variable")
+            self.logger.error("Missing ANTHROPIC_API_KEY environment variable")
             raise APIProviderError("Anthropic API key not found")
 
         if not openai_key:
-            logger.error("Missing OPENAI_API_KEY environment variable")
+            self.logger.error("Missing OPENAI_API_KEY environment variable")
             raise APIProviderError("OpenAI API key not found")
 
         try:
-            self.anthropic_client = anthropic.Anthropic(api_key=anthropic_key)
-            self.openai_client = openai.Client(api_key=openai_key)
+            # Create custom httpx client without problematic parameters
+            http_client = httpx.Client(
+                base_url="https://api.anthropic.com",
+                timeout=60.0,
+                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+            )
+
+            self.anthropic_client = anthropic.Anthropic(
+                api_key=anthropic_key,
+                http_client=http_client,
+                max_retries=3,
+                _strict_response_validation=True
+            )
+            self.openai_client = openai.Client(
+                api_key=openai_key,
+                timeout=60.0
+            )
         except Exception as e:
-            logger.error(f"Failed to initialize API clients: {str(e)}")
+            self.logger.error(f"Failed to initialize API clients: {str(e)}")
             self._executor.shutdown(wait=False)
             raise APIProviderError(f"Failed to initialize API clients: {str(e)}")
 
@@ -110,16 +129,12 @@ class APIRouter(AbstractContextManager):
         config: APIConfig
     ) -> Dict[str, Any]:
         """Handle Anthropic API request"""
-        loop = asyncio.get_event_loop()
         try:
-            response = await loop.run_in_executor(
-                self._executor,
-                lambda: self.anthropic_client.messages.create(
-                    model=config.model,
-                    max_tokens=config.max_tokens,
-                    temperature=config.temperature,
-                    messages=messages
-                )
+            response = await self.anthropic_client.messages.create(
+                model=config.model,
+                max_tokens=config.max_tokens,
+                temperature=config.temperature,
+                messages=messages
             )
             return {
                 "content": response.content,
@@ -137,16 +152,12 @@ class APIRouter(AbstractContextManager):
         config: APIConfig
     ) -> Dict[str, Any]:
         """Handle OpenAI API request"""
-        loop = asyncio.get_event_loop()
         try:
-            response = await loop.run_in_executor(
-                self._executor,
-                lambda: self.openai_client.chat.completions.create(
-                    model=config.model,
-                    messages=messages,
-                    max_tokens=config.max_tokens,
-                    temperature=config.temperature
-                )
+            response = await self.openai_client.chat.completions.create(
+                model=config.model,
+                messages=messages,
+                max_tokens=config.max_tokens,
+                temperature=config.temperature
             )
             return {
                 "content": response.choices[0].message.content,
@@ -161,3 +172,8 @@ class APIRouter(AbstractContextManager):
     async def close(self):
         """Clean up resources"""
         self._executor.shutdown(wait=True)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        self._executor.shutdown(wait=True)
+        return None

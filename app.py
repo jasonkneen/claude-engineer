@@ -54,11 +54,13 @@ async def toggle_dark_mode():
 @app.route('/agent-config', methods=['GET', 'POST'])
 async def handle_agent_config():
     """Handle agent configuration."""
-    global agent_config
-    if request.method == 'POST':
-        data = await request.get_json()
-        agent_config.update(data)
-    return jsonify(agent_config)
+    try:
+        if request.method == 'POST':
+            data = await request.get_json()
+            agent_config.update(data)
+        return jsonify({'agents': agent_config})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # Initialize tools
 async def load_tools():
@@ -250,15 +252,15 @@ async def agent_status():
         agent_statuses = []
         for tool in tools.values():  # Use tools dict instead of assistant.tools
             if isinstance(tool, AgentBaseTool):
-                state = tool.get_state()
+                state = await tool.get_state()  # Await the async get_state method
                 agent_statuses.append({
                     'id': tool.agent_id,
                     'name': tool.name,
                     'role': tool.role.value,
-                    'status': 'Active' if not state.is_paused else 'Paused',
-                    'current_task': state.current_task,
-                    'progress': state.progress,
-                    'task_history': state.task_history
+                    'status': 'Active' if not state['is_paused'] else 'Paused',
+                    'current_task': state['current_task'],
+                    'progress': state['progress'],
+                    'task_history': state['task_history']
                 })
         return jsonify({'agents': agent_statuses})
     except Exception as e:
@@ -274,8 +276,8 @@ async def speak():
             return jsonify({'error': 'No text provided'}), 400
 
         voice_tool = VoiceTool(agent_id="tts_agent", role=VoiceRole.TTS, name="TTS Agent")
-        await voice_tool.speak(text)
-        return jsonify({'status': 'success'})
+        audio_path = await voice_tool.speak(text)
+        return jsonify({'status': 'success', 'audio_path': audio_path})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
