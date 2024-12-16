@@ -93,7 +93,8 @@ class Assistant:
 
             # Initialize tools and agent manager
             self.tools = await self._load_tools()
-            self.agent_manager = await AgentManagerTool(agent_id="manager", role=AgentRole.ORCHESTRATOR)
+            self.agent_manager = AgentManagerTool(name="manager")
+            await self.agent_manager.initialize()
 
         except Exception as e:
             self.logger.error(f"Failed to initialize assistant: {str(e)}")
@@ -664,6 +665,10 @@ Available tools:
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
+
+   
+
+   
 
    
 

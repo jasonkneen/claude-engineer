@@ -298,11 +298,12 @@ async def speak():
 async def transcribe():
     """Handle audio file transcription."""
     try:
-        if 'audio' not in request.files:
+        files = await request.files
+        if 'audio' not in files:
             return jsonify({'error': 'No audio file provided'}), 400
 
-        audio_file = request.files['audio']
-        if not audio_file:
+        audio_file = files['audio']
+        if not audio_file or not audio_file.filename:
             return jsonify({'error': 'Empty audio file'}), 400
 
         # Save the uploaded file temporarily
@@ -310,19 +311,21 @@ async def transcribe():
         os.makedirs(temp_dir, exist_ok=True)
         temp_path = os.path.join(temp_dir, f"upload_{int(time.time())}.wav")
 
-        audio_file.save(temp_path)
+        try:
+            await audio_file.save(temp_path)
 
-        # Initialize voice tool for transcription
-        voice_tool = VoiceTool(agent_id="transcription", role=VoiceRole.STT)
-        await voice_tool.initialize_stt()
+            # Initialize voice tool for transcription
+            voice_tool = VoiceTool(agent_id="transcription", role=VoiceRole.STT)
+            await voice_tool.initialize_stt()
 
-        # Transcribe the audio
-        text = await voice_tool.transcribe(temp_path)
+            # Transcribe the audio
+            text = await voice_tool.transcribe(temp_path)
+            return jsonify({'text': text}), 200
 
-        # Clean up temp file
-        os.remove(temp_path)
-
-        return jsonify({'text': text}), 200
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
     except Exception as e:
         logging.error(f"Transcription error: {str(e)}")

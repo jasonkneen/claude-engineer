@@ -128,10 +128,13 @@ class AgentManagerTool(AgentBaseTool):
                 role_upper = role.upper()
                 if role_upper in AgentRole.__members__:
                     role = AgentRole[role_upper]
+                    custom_role = None
                 else:
                     # Create agent with custom role
-                    kwargs['custom_role'] = role
+                    custom_role = role.lower()
                     role = AgentRole.CUSTOM
+            else:
+                custom_role = None
 
             # Create agent based on role
             from tools.test_agent import TestAgentTool
@@ -139,7 +142,12 @@ class AgentManagerTool(AgentBaseTool):
             if role == AgentRole.TEST:
                 agent = TestAgentTool(agent_id=agent_id)
             else:
-                agent = AgentBaseTool(agent_id=agent_id, role=role, name=kwargs.get('name'))
+                agent = AgentBaseTool(
+                    agent_id=agent_id,
+                    role=role,
+                    name=kwargs.get('name'),
+                    custom_role=custom_role
+                )
 
             # Initialize agent
             await agent.initialize()
@@ -177,7 +185,8 @@ class AgentManagerTool(AgentBaseTool):
         result = []
         for agent_id, agent in self.agents.items():
             state = await agent.get_state()
-            display_role = agent.custom_role or agent.role.name
+            # Use custom_role if available, otherwise use role name
+            display_role = agent.custom_role if agent.custom_role else agent.role.name
             result.append(
                 f"Agent: {agent_id}\n"
                 f"Role: {display_role}\n"
