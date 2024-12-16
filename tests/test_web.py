@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from tools.voice_tool import VoiceRole, VoiceTool
 from tools.agent_base import AgentRole, AgentBaseTool
 import asyncio
+from werkzeug.datastructures import FileStorage
+from io import BytesIO
 
 @pytest_asyncio.fixture
 async def voice_tool():
@@ -187,9 +189,20 @@ async def test_voice_integration(client: QuartClient, voice_tool):
     with open('tests/test_audio.wav', 'wb') as f:
         f.write(b'test audio data')
 
+    # Create test file data
     with open('tests/test_audio.wav', 'rb') as f:
-        response = await client.post('/transcribe',
-                                   data={'audio': (f, 'test_audio.wav')})
+        file_data = f.read()
+
+    # Create form data with file
+    form_data = {
+        'audio': ('test_audio.wav', file_data, 'audio/wav')
+    }
+
+    # Send multipart form request
+    response = await client.post(
+        '/transcribe',
+        files=form_data
+    )
     assert response.status_code == 200
     data = await response.get_json()
     assert 'text' in data
