@@ -5,7 +5,7 @@ from rich.markdown import Markdown
 from rich.live import Live
 from rich.spinner import Spinner
 from rich.panel import Panel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import importlib
 import inspect
 import pkgutil
@@ -13,9 +13,15 @@ import os
 import json
 import sys
 import logging
+import asyncio
 
 from config import Config
 from tools.base import BaseTool
+from api_router import APIRouter, APIConfig
+from tools.agent_manager import AgentManagerTool
+from tools.test_agent import TestAgentTool
+from tools.context_manager import ContextManagerTool
+from tools.agent_base import AgentBaseTool, AgentRole
 from prompt_toolkit import prompt
 from prompt_toolkit.styles import Style
 from prompts.system_prompts import SystemPrompts
@@ -36,6 +42,15 @@ class Assistant:
     - Tool execution upon request from model responses.
     """
 
+
+    async def __init__(self, config=None):
+        self.config = config or Config
+        if not getattr(self.config, 'ANTHROPIC_API_KEY', None):
+            raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
+
+        # Initialize API router and clients
+        self.api_router = APIRouter()
+
     def __init__(self):
         # For testing purposes - bypass API key check if TEST_MODE is set
         self.test_mode = os.getenv('TEST_MODE', '').lower() == 'true'
@@ -50,11 +65,13 @@ class Assistant:
         self.conversation_history: List[Dict[str, Any]] = []
         self.console = Console()
 
-        self.thinking_enabled = getattr(Config, 'ENABLE_THINKING', False)
-        self.temperature = getattr(Config, 'DEFAULT_TEMPERATURE', 0.7)
+        self.thinking_enabled = getattr(self.config, 'ENABLE_THINKING', False)
+        self.temperature = getattr(self.config, 'DEFAULT_TEMPERATURE', 0.7)
         self.total_tokens_used = 0
 
-        self.tools = self._load_tools()
+        # Initialize tools and agent manager
+        self.tools = await self._load_tools()
+        self.agent_manager = await AgentManagerTool(agent_id="manager", role=AgentRole.ORCHESTRATOR)
 
     def _execute_uv_install(self, package_name: str) -> bool:
         """
@@ -80,7 +97,7 @@ class Assistant:
         """
         Dynamically load all tool classes from the tools directory.
         If a dependency is missing, prompt the user to install it via uvpackagemanager.
-        
+
         Returns:
             A list of tools (dicts) containing their 'name', 'description', and 'input_schema'.
         """
@@ -97,16 +114,28 @@ class Assistant:
                 del sys.modules[module_name]
 
         try:
+            # Load core agent tools first
+            core_tools = [
+                'agent_manager',
+                'test_agent',
+                'context_manager'
+            ]
+            for tool_name in core_tools:
+                try:
+                    module = importlib.import_module(f'tools.{tool_name}')
+                    self._extract_tools_from_module(module, tools)
+                except ImportError as e:
+                    self.console.print(f"[red]Failed to load core tool {tool_name}: {str(e)}[/red]")
+
+            # Load additional tools
             for module_info in pkgutil.iter_modules([str(tools_path)]):
-                if module_info.name == 'base':
+                if module_info.name == 'base' or module_info.name in core_tools:
                     continue
 
-                # Attempt loading the tool module
                 try:
                     module = importlib.import_module(f'tools.{module_info.name}')
                     self._extract_tools_from_module(module, tools)
                 except ImportError as e:
-                    # Handle missing dependencies
                     missing_module = self._parse_missing_dependency(str(e))
                     self.console.print(f"\n[yellow]Missing dependency:[/yellow] {missing_module} for tool {module_info.name}")
                     user_response = input(f"Would you like to install {missing_module}? (y/n): ").lower()
@@ -114,7 +143,6 @@ class Assistant:
                     if user_response == 'y':
                         success = self._execute_uv_install(missing_module)
                         if success:
-                            # Retry loading the module after installation
                             try:
                                 module = importlib.import_module(f'tools.{module_info.name}')
                                 self._extract_tools_from_module(module, tools)
@@ -150,7 +178,21 @@ class Assistant:
         for name, obj in inspect.getmembers(module):
             if (inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool):
                 try:
-                    tool_instance = obj()
+                    # Check if class is AgentBaseTool subclass
+                    if issubclass(obj, AgentBaseTool):
+                        # Generate unique agent ID and determine role
+                        agent_id = f"{name.lower()}_{len(tools)}"
+                        # Map tool name to role, fallback to CUSTOM
+                        role_map = {
+                            'TestAgentTool': AgentRole.TEST,
+                            'ContextManagerTool': AgentRole.CONTEXT,
+                            'AgentManagerTool': AgentRole.ORCHESTRATOR
+                        }
+                        role = role_map.get(name, AgentRole.CUSTOM)
+                        tool_instance = obj(agent_id=agent_id, role=role)
+                    else:
+                        tool_instance = obj()
+
                     tools.append({
                         "name": tool_instance.name,
                         "description": tool_instance.description,
@@ -262,7 +304,7 @@ class Assistant:
             return "[base64 data omitted]"
         return data
 
-    def _execute_tool(self, tool_use):
+    async def _execute_tool(self, tool_use):
         """
         Given a tool usage request (with tool name and inputs),
         dynamically load and execute the corresponding tool.
@@ -272,20 +314,34 @@ class Assistant:
         tool_result = None
 
         try:
-            module = importlib.import_module(f'tools.{tool_name}')
-            tool_instance = self._find_tool_instance_in_module(module, tool_name)
-
-            if not tool_instance:
-                tool_result = f"Tool not found: {tool_name}"
-            else:
-                # Execute the tool with the provided input
-                try:
-                    result = tool_instance.execute(**tool_input)
-                    # Keep structured data intact
+            # Check if tool is an agent operation
+            if tool_name in ['agent_manager', 'test_agent', 'context_manager']:
+                tool_instance = getattr(self, tool_name, None)
+                if tool_instance:
+                    result = await tool_instance.execute(**tool_input)
                     tool_result = result
+
+                else:
+                    tool_result = f"Agent tool not initialized: {tool_name}"
+            else:
+                module = importlib.import_module(f'tools.{tool_name}')
+                tool_instance = await self._find_tool_instance_in_module(module, tool_name)
+
+                if not tool_instance:
+                    tool_result = f"Tool not found: {tool_name}"
+                else:
+                    # Execute the tool with the provided input
+                    try:
+                        result = await tool_instance.execute(**tool_input)
+                        # Keep structured data intact
+                        tool_result = result
+                    except Exception as exec_err:
+                        tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
+
                 except Exception as exec_err:
                     logging.error(f"Error executing tool '{tool_name}': {str(exec_err)}")  # P1877
                     tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
+
         except ImportError:
             tool_result = f"Failed to import tool: {tool_name}"
         except Exception as e:
@@ -293,19 +349,36 @@ class Assistant:
             tool_result = f"Error executing tool: {str(e)}"
 
         # Display tool usage with proper handling of structured data
-        self._display_tool_usage(tool_name, tool_input, 
+        self._display_tool_usage(tool_name, tool_input,
             json.dumps(tool_result) if not isinstance(tool_result, str) else tool_result)
         return tool_result
 
-    def _find_tool_instance_in_module(self, module, tool_name: str):
+    async def _find_tool_instance_in_module(self, module, tool_name: str):
         """
         Search a given module for a tool class matching tool_name and return an instance of it.
+        Handles both regular tools and agent-based tools with proper initialization.
         """
         for name, obj in inspect.getmembers(module):
             if (inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool):
-                candidate_tool = obj()
-                if candidate_tool.name == tool_name:
-                    return candidate_tool
+                try:
+                    if issubclass(obj, AgentBaseTool):
+                        # Generate unique agent ID and determine role
+                        agent_id = f"{name.lower()}_{tool_name}"
+                        # Map tool name to role, fallback to CUSTOM
+                        role_map = {
+                            'TestAgentTool': AgentRole.TEST,
+                            'ContextManagerTool': AgentRole.CONTEXT,
+                            'AgentManagerTool': AgentRole.ORCHESTRATOR
+                        }
+                        role = role_map.get(name, AgentRole.CUSTOM)
+                        candidate_tool = await obj(agent_id=agent_id, role=role)
+                    else:
+                        candidate_tool = await obj()
+
+                    if candidate_tool.name == tool_name:
+                        return candidate_tool
+                except Exception as e:
+                    self.console.print(f"[red]Error initializing tool {name}:[/red] {str(e)}")
         return None
 
     def _display_token_usage(self, usage):
@@ -335,22 +408,26 @@ class Assistant:
 
         self.console.print("---")
 
-    def _get_completion(self):
+    async def _get_completion(self):
         """
-        Get a completion from the Anthropic API.
+        Get a completion using the API router.
         Handles both text-only and multimodal messages.
         """
         try:
-            response = self.client.messages.create(
-                model=Config.MODEL,
-                max_tokens=min(
-                    Config.MAX_TOKENS,
-                    Config.MAX_CONVERSATION_TOKENS - self.total_tokens_used
-                ),
-                temperature=self.temperature,
-                tools=self.tools,
+            # Route request through API router
+            response = await self.api_router.route_request(
+                provider=Config.DEFAULT_PROVIDER,
                 messages=self.conversation_history,
-                system=f"{SystemPrompts.DEFAULT}\n\n{SystemPrompts.TOOL_USAGE}"
+                config=APIConfig(
+                    model=Config.MODEL,
+                    max_tokens=min(
+                        Config.MAX_TOKENS,
+                        Config.MAX_CONVERSATION_TOKENS - self.total_tokens_used
+                    ),
+                    temperature=self.temperature,
+                    tools=self.tools,
+                    system=f"{SystemPrompts.DEFAULT}\n\n{SystemPrompts.TOOL_USAGE}"
+                )
             )
 
             # Update token usage based on response usage
@@ -362,6 +439,43 @@ class Assistant:
             if self.total_tokens_used >= Config.MAX_CONVERSATION_TOKENS:
                 self.console.print("\n[bold red]Token limit reached! Please reset the conversation.[/bold red]")
                 return "Token limit reached! Please type 'reset' to start a new conversation."
+
+            # Handle tool calls in the response content
+            if hasattr(response, 'content') and isinstance(response.content, list):
+                for content_block in response.content:
+                    if hasattr(content_block, 'type') and content_block.type == 'tool_calls':
+                        tool_results = []
+                        for tool_call in content_block.tool_calls:
+                            result = self._execute_tool(tool_call)
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_call_id": tool_call.id,
+                                "content": result
+                            })
+
+                        # Add tool results to conversation
+                        self.conversation_history.append({
+                            "role": "assistant",
+                            "content": response.content
+                        })
+                        self.conversation_history.append({
+                            "role": "user",
+                            "content": tool_results
+                        })
+                        return await self._get_completion()
+
+            # Handle final text response
+            if hasattr(response, 'content') and isinstance(response.content, list):
+                for content_block in response.content:
+                    if hasattr(content_block, 'type') and content_block.type == 'text':
+                        self.conversation_history.append({
+                            "role": "assistant",
+                            "content": response.content
+                        })
+                        return content_block.text
+
+            self.console.print("[red]No valid content in response.[/red]")
+            return "No response content available."
 
             if response.stop_reason == "tool_use":
                 self.console.print("\n[bold yellow]  Handling Tool Use...[/bold yellow]\n")
@@ -417,25 +531,22 @@ class Assistant:
                 self.console.print("[red]No content in final response.[/red]")
                 return "No response content available."
 
+
         except Exception as e:
             logging.error(f"Error in _get_completion: {str(e)}")  # P24a9
             return f"Error: {str(e)}"
 
-    def chat(self, user_input):
-        """
-        Process a chat message from the user.
-        user_input can be either a string (text-only) or a list (multimodal message)
-        """
-        # Handle special commands only for text-only messages
-        if isinstance(user_input, str):
-            if user_input.lower() == 'refresh':
+    async def chat(self, user_input: str) -> str:
+        """Process user input and return assistant response."""
+        try:
+            if user_input.lower() == 'reset':
+                return self.reset()
+            elif user_input.lower() == 'refresh':
                 self.refresh_tools()
-                return "Tools refreshed successfully!"
-            elif user_input.lower() == 'reset':
-                self.reset()
-                return "Conversation reset!"
-            elif user_input.lower() == 'quit':
-                return "Goodbye!"
+                return "Tools refreshed!"
+            elif user_input.lower() == 'tools':
+                self.display_available_tools()
+                return "Tools displayed above."
 
         if self.test_mode:
             # Mock response for test mode
@@ -445,11 +556,14 @@ class Assistant:
 
         try:
             # Add user message to conversation history
+
             self.conversation_history.append({
                 "role": "user",
-                "content": user_input  # This can be either string or list
+                "content": [{"type": "text", "text": user_input}]
             })
 
+            # Get completion from API
+            response = await self._get_completion()
             # Show thinking indicator if enabled
             if self.thinking_enabled:
                 with Live(Spinner('dots', text='Thinking...', style="cyan"),
@@ -458,10 +572,15 @@ class Assistant:
             else:
                 response = self._get_completion()
 
-            return response
+            # Update conversation history
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": response
+            })
 
+            return response
         except Exception as e:
-            logging.error(f"Error in chat: {str(e)}")
+            self.console.print(f"[red]Error in chat:[/red] {str(e)}")
             return f"Error: {str(e)}"
 
     def reset(self):
@@ -485,7 +604,7 @@ Available tools:
         self.display_available_tools()
 
 
-def main():
+async def main():
     """
     Entry point for the assistant CLI loop.
     Provides a prompt for user input and handles 'quit' and 'reset' commands.
@@ -523,7 +642,7 @@ Available tools:
                 assistant.reset()
                 continue
 
-            response = assistant.chat(user_input)
+            response = await assistant.chat(user_input)
             console.print("\n[bold purple]Claude Engineer:[/bold purple]")
             if isinstance(response, str):
                 safe_response = response.replace('[', '\\[').replace(']', '\\]')
@@ -538,4 +657,7 @@ Available tools:
 
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
+
+   

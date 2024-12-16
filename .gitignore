@@ -1,8 +1,25 @@
-uploads/
-*.pyc
-.DS_Store
-.env
-.venv/
+# Python
 __pycache__/
-.ruff_cache/
+*.py[cod]
+*.class
+*.so
+.Python
+venv/
+ENV/
+.env
+.coverage
 .pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Audio files
+*.wav
+*.mp3
+
+# Generated files
+static/audio/
