@@ -75,7 +75,7 @@ export function ChatInput({ onSubmit, isLoading, className }: ChatInputProps) {
     <form
       onSubmit={handleSubmit}
       className={cn(
-        "flex items-end gap-2 border-t bg-background/95 p-4 sticky bottom-0 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm",
+        "flex items-end gap-3 border-t bg-background/95 px-6 py-4 sticky bottom-0 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm",
         className
       )}
     >
@@ -95,7 +95,8 @@ export function ChatInput({ onSubmit, isLoading, className }: ChatInputProps) {
       />
       <Button 
         type="submit" 
-        size="icon" 
+        size="icon"
+        className="transition-colors hover:bg-primary/90 active:scale-95"
         disabled={!input.trim() || isLoading}
       >
         <SendIcon className="h-4 w-4" />
