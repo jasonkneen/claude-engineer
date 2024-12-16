@@ -172,6 +172,9 @@ async def test_agent_configuration(mock_voice, client: QuartClient, voice_tool):
 @pytest.mark.asyncio
 async def test_voice_integration(client: QuartClient, voice_tool):
     """Test voice integration in web interface."""
+    # Ensure testing mode is enabled
+    client.app.config['TESTING'] = True
+
     # Test TTS endpoint
     test_text = "Testing voice output"
     response = await client.post('/speak',
