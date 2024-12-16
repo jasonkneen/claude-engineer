@@ -39,75 +39,44 @@ class AgentState:
         return cls(**data)
 
 class AgentBaseTool(BaseTool):
-    """Base class for agent-based tools that supports:
-    1. Predefined and custom roles
-    2. State management and persistence
-    3. Thread-safe operations
-    4. Context management
-    5. Communication through central server
-    """
-
-    def __init__(self, agent_id: str, role: Union[AgentRole, str], name: Optional[str] = None):
-        """Initialize agent tool with ID and role.
-
-        Args:
-            agent_id: Unique identifier for the agent
-            role: Predefined role from AgentRole enum or string
-            name: Optional display name for the agent
-        """
-        # Handle both enum and string roles
-        if isinstance(role, str):
-            try:
-                self.role = AgentRole[role.upper()]
-                self.custom_role = None
-            except KeyError:
-                if role.lower() == "custom":
-                    self.role = AgentRole.CUSTOM
-                    self.custom_role = None
-                else:
-                    self.role = AgentRole.CUSTOM
-                    self.custom_role = role
-        else:
-            self.role = role
-            self.custom_role = None
-
-        # Generate agent name using role and ID
-        display_role = self.custom_role or self.role.name
-        agent_name = name or f"agent_{display_role}_{agent_id}"
-        super().__init__(name=agent_name)
-
-        self.agent_id = agent_id
-        self._lock = asyncio.Lock()  # Use asyncio.Lock instead of threading.Lock
-        self._executor = ThreadPoolExecutor(max_workers=1)
+    def __init__(self, agent_id: str, role: AgentRole, name: Optional[str] = None):
+        """Initialize agent tool with ID, role and optional name."""
+        super().__init__()
+        self._agent_id = agent_id
+        self._role = role
+        self._name = name or self.__class__.__name__.lower()
+        self._description = "Base agent tool for handling agent operations"
+        self._lock = asyncio.Lock()
         self.state = AgentState(
             agent_id=agent_id,
-            agent_type=self.custom_role or self.role.name,
-            is_paused=False,
-            current_task=None,
-            context={},
-            data={},
-            progress=0.0,
-            task_history=[],
-            start_time=None
+            agent_type=self._name,
+            is_paused=False
         )
-        self.logger = logging.getLogger(__name__)
+    
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        # Cleanup
+        pass
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property 
+    def description(self) -> str:
+        return self._description
+
+    async def execute(self, command: str, **kwargs):
+        async with self._lock:
+            if self._paused:
+                return "Agent is currently paused"
+            return f"Processed: {command}"
 
     async def initialize(self):
         """Async initialization method."""
         await super().initialize()
-
-    @property
-    def description(self) -> str:
-        """Detailed description of the agent's capabilities"""
-        return f"""
-        Agent-based tool for {self.role.value} operations.
-        Supports:
-        - Task execution and management
-        - Context awareness
-        - State persistence
-        - Thread-safe operations
-        - Central server communication
-        """
 
     @property
     def input_schema(self) -> Dict[str, Any]:

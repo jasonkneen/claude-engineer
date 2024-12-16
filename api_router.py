@@ -33,6 +33,18 @@ class APIRouter(AbstractContextManager):
         self.anthropic_client = None
         self.openai_client = None
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        # Cleanup resources
+        pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Implement standard context manager exit."""
+        if hasattr(self, '_executor'):
+            self._executor.shutdown(wait=True)
+
     async def setup(self) -> None:
         """Async setup of API clients"""
         await self._setup_clients()

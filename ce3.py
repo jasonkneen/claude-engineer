@@ -42,36 +42,40 @@ class Assistant:
     - Tool execution upon request from model responses.
     """
 
-
-    async def __init__(self, config=None):
+    def __init__(self, config=None):
+        """Initialize basic properties."""
         self.config = config or Config
-        if not getattr(self.config, 'ANTHROPIC_API_KEY', None):
-            raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
-
-        # Initialize API router and clients
-        self.api_router = APIRouter()
-
-    def __init__(self):
-        # For testing purposes - bypass API key check if TEST_MODE is set
-        self.test_mode = os.getenv('TEST_MODE', '').lower() == 'true'
-        if not self.test_mode:
-            if not getattr(Config, 'ANTHROPIC_API_KEY', None):
-                raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
-            # Initialize Anthropics client
-            self.client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
-        else:
-            self.client = None  # Mock client for testing
-
-        self.conversation_history: List[Dict[str, Any]] = []
+        self.conversation_history = []
         self.console = Console()
-
         self.thinking_enabled = getattr(self.config, 'ENABLE_THINKING', False)
         self.temperature = getattr(self.config, 'DEFAULT_TEMPERATURE', 0.7)
         self.total_tokens_used = 0
-
-        # Initialize tools and agent manager
+        self.api_router = None
+        self.tools = None
+        self.agent_manager = None
+        
+    async def initialize(self):
+        """Async initialization of components."""
+        if not self.test_mode:
+            if not getattr(self.config, 'ANTHROPIC_API_KEY', None):
+                raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
+            self.client = anthropic.Anthropic(api_key=self.config.ANTHROPIC_API_KEY)
+        
+        self.api_router = await APIRouter().__aenter__()
         self.tools = await self._load_tools()
-        self.agent_manager = await AgentManagerTool(agent_id="manager", role=AgentRole.ORCHESTRATOR)
+        self.agent_manager = await AgentManagerTool(
+            agent_id="manager",
+            role=AgentRole.ORCHESTRATOR
+        ).__aenter__()
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.api_router.__aexit__(exc_type, exc_val, exc_tb)
+        if hasattr(self, 'agent_manager'):
+            await self.agent_manager.__aexit__(exc_type, exc_val, exc_tb)
 
     def _execute_uv_install(self, package_name: str) -> bool:
         """
@@ -335,10 +339,7 @@ class Assistant:
                         # Keep structured data intact
                         tool_result = result
                     except Exception as exec_err:
-                        tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
-
-                except Exception as exec_err:
-                    logging.error(f"Error executing tool '{tool_name}': {str(exec_err)}")  # P1877
+                        logging.error(f"Error executing tool '{tool_name}': {str(exec_err)}")
                         tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
         except ImportError:
             tool_result = f"Failed to import tool: {tool_name}"
@@ -519,6 +520,9 @@ class Assistant:
 
     async def chat(self, user_input: str) -> str:
         """Process user input and return assistant response."""
+        if not isinstance(user_input, str):
+            raise TypeError("Input must be a string")
+
         try:
             if user_input.lower() == 'reset':
                 return self.reset()
@@ -528,6 +532,9 @@ class Assistant:
             elif user_input.lower() == 'tools':
                 self.display_available_tools()
                 return "Tools displayed above."
+        except Exception as e:
+            self.console.print(f"[red]Error processing command:[/red] {str(e)}")
+            return f"Error: {str(e)}"
 
         if self.test_mode:
             # Mock response for test mode
@@ -592,6 +599,7 @@ async def main():
 
     try:
         assistant = Assistant()
+        await assistant.initialize()
     except ValueError as e:
         console.print(f"[bold red]Error:[/bold red] {str(e)}")
         console.print("Please ensure ANTHROPIC_API_KEY is set correctly.")
@@ -637,5 +645,3 @@ Available tools:
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
-
-   

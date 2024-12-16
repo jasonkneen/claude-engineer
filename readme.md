@@ -27,14 +27,17 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Run the development server:
+3. Run the development server:pip install -r requirements-test.txt
 ```bash
 python app.py
 ```
 
 ## Testing
 
-Run the test suite:
+Run the test suite with coverage reporting:
 ```bash
 python -m pytest tests/
 ```
+
+[pytest]
+addopts = --cov=ce3 --cov-report=term-missing --asyncio-mode=strict

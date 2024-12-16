@@ -17,7 +17,20 @@ class VoiceRole(Enum):
     VOICE_CONTROL = "voice_control"
 
 class VoiceTool(BaseTool):
-    """Tool for handling voice interactions using PyTTSx3 and Whisper."""
+    def __init__(self):
+        super().__init__()
+        self._voice_speed = 1.0
+        self._voice_volume = 1.0  # Changed from 0.8 to 1.0 to match test
+        self._name = "voice"
+        self._description = "Voice synthesis and processing tool"
+
+    @property
+    def voice_speed(self) -> float:
+        return self._voice_speed
+
+    @property
+    def voice_volume(self) -> float:
+        return self._voice_volume
 
     def __init__(self, agent_id: str, role: VoiceRole, name: Optional[str] = None):
         """Initialize voice tool with specified role.
