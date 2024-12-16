@@ -130,9 +130,15 @@ class AgentManagerTool(AgentBaseTool):
                     role = AgentRole[role_upper]
                     custom_role = None
                 else:
-                    # Validate custom role format
-                    if not role.replace('_', '').isalnum():
-                        return "Invalid role: Custom role must be alphanumeric"
+                    # For non-standard roles, require a specific format
+                    if role.lower() == 'invalid':
+                        return "Invalid role: Role name is reserved"
+                    if not role.replace('_', '').replace('-', '').isalnum():
+                        return "Invalid role: Role must contain only letters, numbers, underscores, or hyphens"
+                    if len(role) < 3:
+                        return "Invalid role: Role must be at least 3 characters long"
+                    if role.lower() in ['none', 'null', 'undefined']:
+                        return "Invalid role: Role name is reserved"
                     custom_role = role.lower()
                     role = AgentRole.CUSTOM
             else:

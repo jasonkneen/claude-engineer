@@ -298,11 +298,16 @@ async def speak():
 async def transcribe():
     """Handle audio file transcription."""
     try:
-        files = await request.files
-        if 'audio' not in files:
+        # Handle both form data and multipart/form-data
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            form = await request.files
+        else:
+            form = await request.form
+
+        if 'audio' not in form:
             return jsonify({'error': 'No audio file provided'}), 400
 
-        audio_file = files['audio']
+        audio_file = form['audio']
         if not audio_file or not audio_file.filename:
             return jsonify({'error': 'Empty audio file'}), 400
 
