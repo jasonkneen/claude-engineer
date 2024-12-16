@@ -123,17 +123,21 @@ class AgentManagerTool(AgentBaseTool):
             if isinstance(role, str):
                 # Validate role string format
                 if not role or not role.strip() or not role.replace('_', '').isalnum():
-                    return "Invalid role"
+                    return "Invalid role: Role must be alphanumeric"
 
                 role_upper = role.upper()
                 if role_upper in AgentRole.__members__:
                     role = AgentRole[role_upper]
                     custom_role = None
                 else:
-                    # Create agent with custom role
+                    # Validate custom role format
+                    if not role.replace('_', '').isalnum():
+                        return "Invalid role: Custom role must be alphanumeric"
                     custom_role = role.lower()
                     role = AgentRole.CUSTOM
             else:
+                if not isinstance(role, AgentRole):
+                    return "Invalid role: Must be string or AgentRole"
                 custom_role = None
 
             # Create agent based on role

@@ -306,6 +306,10 @@ async def transcribe():
         if not audio_file or not audio_file.filename:
             return jsonify({'error': 'Empty audio file'}), 400
 
+        # Validate file type
+        if not audio_file.filename.lower().endswith(('.wav', '.mp3')):
+            return jsonify({'error': 'Invalid file type. Only .wav and .mp3 files are supported'}), 400
+
         # Save the uploaded file temporarily
         temp_dir = os.path.join(os.path.dirname(__file__), 'static', 'temp')
         os.makedirs(temp_dir, exist_ok=True)

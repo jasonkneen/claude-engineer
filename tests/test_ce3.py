@@ -27,7 +27,6 @@ async def assistant():
     with patch('ce3.APIRouter', return_value=mock_router):
         assistant = Assistant(config)
         await assistant.initialize()  # Ensure proper async initialization
-        await assistant.initialize_tools()  # Initialize tools with proper parameters
         return assistant
 
 @pytest.mark.asyncio
@@ -57,7 +56,6 @@ async def test_assistant_chat_from_app(assistant):
     mock_assistant = AsyncMock()
     mock_assistant.chat = AsyncMock(return_value="Test response from app")
     mock_assistant.initialize = AsyncMock()
-    mock_assistant.initialize_tools = AsyncMock()
 
     # Mock Assistant class in app context
     with patch('app.Assistant', return_value=mock_assistant):
