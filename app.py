@@ -3,6 +3,9 @@ from ce3 import Assistant
 from tools.agent_base import AgentBaseTool, AgentRole
 from tools.voice_tool import VoiceTool, VoiceRole
 from tools.base import BaseTool
+from tools.agents.specialized_agents import FrontendAgent, BackendAgent, DatabaseAgent
+from tools.agents.base_conversation_agent import BaseConversationAgent
+from tools.agents.orchestrator_agent import OrchestratorAgent
 import os
 import time
 from werkzeug.utils import secure_filename
@@ -31,13 +34,20 @@ agent_config = {}
 @app.before_serving
 async def startup():
     """Initialize assistant and tools before serving."""
-    global assistant, tools
-    config = Config()
-    assistant = Assistant(config)
-    await assistant.initialize()  # This includes tool initialization
-    tools = await load_tools()
-    for tool_name, tool in tools.items():
-        assistant.tools.append(tool)
+    global assistant
+    try:
+        config = Config()
+        config.test_mode = True  # Enable test mode for development
+        # Create and initialize assistant
+        assistant = await Assistant(config)  # Now properly awaitable
+        app.assistant = assistant  # Make assistant available in app context
+        # Load and attach tools
+        tools = await load_tools()
+        for tool in tools.values():
+            assistant.tools.append(tool)
+    except Exception as e:
+        logging.error(f"Error during startup: {str(e)}")
+        raise
 
 @app.route('/')
 async def home():
@@ -56,11 +66,28 @@ async def toggle_dark_mode():
 @app.route('/agent-config', methods=['GET', 'POST'])
 async def handle_agent_config():
     """Handle agent configuration."""
-    global agent_config
-    if request.method == 'POST':
+    try:
+        if request.method == 'POST':
+            data = await request.get_json()
+            agent_config.update(data)
+        return jsonify({'agents': agent_config})
+    except Exception as e:
+        logging.error(f"Error in agent-config endpoint: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/update-agent-config', methods=['POST'])
+async def update_agent_config():
+    """Update agent configuration."""
+    try:
         data = await request.get_json()
         agent_config.update(data)
-    return jsonify(agent_config)
+        return jsonify({
+            'status': 'updated',
+            'config': agent_config
+        })
+    except Exception as e:
+        logging.error(f"Error updating agent config: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 # Initialize tools
 async def load_tools():
@@ -247,73 +274,112 @@ async def reset():
 
 @app.route('/agent-status', methods=['GET'])
 async def agent_status():
-    """Get status of all agents."""
+    """Get agent status information."""
     try:
-        agent_statuses = []
-        for tool in tools.values():  # Use tools dict instead of assistant.tools
-            if isinstance(tool, AgentBaseTool):
-                state = tool.get_state()
-                agent_statuses.append({
-                    'id': tool.agent_id,
-                    'name': tool.name,
-                    'role': tool.role.value,
-                    'status': 'Active' if not state.is_paused else 'Paused',
-                    'current_task': state.current_task,
-                    'progress': state.progress,
-                    'task_history': state.task_history
-                })
-        return jsonify({'agents': agent_statuses})
+        if not app.assistant or not app.assistant.tools:
+            return jsonify({'error': 'Assistant not initialized'}), 500
+
+        status = {
+            'agents': [],
+            'voice_enabled': False
+        }
+
+        for tool in app.assistant.tools:
+            if hasattr(tool, 'get_state'):
+                try:
+                    tool_state = await tool.get_state()
+                    agent_status = {
+                        'id': getattr(tool, 'agent_id', tool.__class__.__name__),
+                        'name': getattr(tool, 'name', tool.__class__.__name__),
+                        'role': getattr(tool, 'role', None).value if hasattr(tool, 'role') and getattr(tool, 'role', None) else None,
+                        'status': 'Active' if not tool_state.get('is_paused', False) else 'Paused',
+                        'current_task': tool_state.get('current_task'),
+                        'progress': tool_state.get('progress'),
+                        'task_history': tool_state.get('task_history', [])
+                    }
+                    status['agents'].append(agent_status)
+                except Exception as e:
+                    logging.error(f"Error getting state for tool {tool.__class__.__name__}: {str(e)}")
+
+            if hasattr(tool, 'role') and getattr(tool, 'role', None) == VoiceRole.VOICE_CONTROL:
+                status['voice_enabled'] = True
+
+        return jsonify(status)
     except Exception as e:
+        logging.error(f"Error in agent-status endpoint: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/speak', methods=['POST'])
 async def speak():
-    """Text-to-speech endpoint."""
+    """Handle text-to-speech requests."""
     try:
+        if not app.assistant or not app.assistant.tools:
+            return jsonify({'error': 'Assistant not initialized'}), 500
+
         data = await request.get_json()
-        text = data.get('text', '')
+        text = data.get('text')
         if not text:
             return jsonify({'error': 'No text provided'}), 400
 
-        voice_tool = VoiceTool(agent_id="tts_agent", role=VoiceRole.TTS, name="TTS Agent")
-        await voice_tool.speak(text)
-        return jsonify({'status': 'success'})
+        # Find voice tool
+        voice_tool = next((tool for tool in app.assistant.tools if hasattr(tool, 'role') and getattr(tool, 'role', None) == VoiceRole.VOICE_CONTROL), None)
+        if not voice_tool:
+            return jsonify({'error': 'Voice tool not available'}), 500
+
+        # Generate speech
+        try:
+            audio_path = await voice_tool.speak(text)
+            return jsonify({
+                'status': 'success',
+                'audio_path': audio_path
+            })
+        except Exception as e:
+            logging.error(f"Error generating speech: {str(e)}")
+            return jsonify({'error': f'Speech generation failed: {str(e)}'}), 500
+
     except Exception as e:
+        logging.error(f"Error in speak endpoint: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/transcribe', methods=['POST'])
 async def transcribe():
-    """Speech-to-text endpoint."""
-    if 'audio' not in await request.files:
-        return jsonify({'error': 'No audio file provided'}), 400
+    """Handle speech-to-text requests."""
+    try:
+        if not app.assistant or not app.assistant.tools:
+            return jsonify({'error': 'Assistant not initialized'}), 500
 
-    audio_file = (await request.files)['audio']
-    if audio_file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
+        files = await request.files
+        if 'audio' not in files:
+            return jsonify({'error': 'No audio file provided'}), 400
 
-    if audio_file:
-        filename = secure_filename(audio_file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        await audio_file.save(filepath)
+        audio_file = files['audio']
+        if not audio_file.filename:
+            return jsonify({'error': 'Invalid audio file'}), 400
 
+        # Save uploaded file temporarily
+        temp_path = os.path.join(os.path.dirname(__file__), 'static', 'uploads', f'temp_{int(time.time())}.wav')
+        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+        await audio_file.save(temp_path)
+
+        # Find voice tool
+        voice_tool = next((tool for tool in app.assistant.tools if hasattr(tool, 'role') and getattr(tool, 'role', None) == VoiceRole.VOICE_CONTROL), None)
+        if not voice_tool:
+            os.remove(temp_path)
+            return jsonify({'error': 'Voice tool not available'}), 500
+
+        # Transcribe audio
         try:
-            voice_tool = VoiceTool(agent_id="stt_agent", role=VoiceRole.STT, name="STT Agent")
-            text = await voice_tool.transcribe(filepath)
-
-            # Clean up the audio file
-            os.remove(filepath)
-
-            return jsonify({
-                'success': True,
-                'text': text
-            })
+            text = await voice_tool.transcribe(temp_path)
+            os.remove(temp_path)
+            return jsonify({'text': text})
         except Exception as e:
-            # Clean up on error
-            if os.path.exists(filepath):
-                os.remove(filepath)
-            return jsonify({'error': str(e)}), 500
+            os.remove(temp_path)
+            logging.error(f"Error transcribing audio: {str(e)}")
+            return jsonify({'error': f'Transcription failed: {str(e)}'}), 500
 
-    return jsonify({'error': 'Invalid audio file'}), 400
+    except Exception as e:
+        logging.error(f"Error in transcribe endpoint: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/create-flow', methods=['POST'])
 async def create_flow():

@@ -50,9 +50,9 @@ async def test_agent_state_management(test_agent):
     await agent.initialize()
 
     # Test pause/resume
-    agent.pause()
+    await agent.pause()
     assert agent.state.is_paused
-    agent.resume()
+    await agent.resume()
     assert not agent.state.is_paused
 
     # Test context update
@@ -89,7 +89,7 @@ async def test_paused_execution(test_agent):
     await agent.initialize()
 
     # Pause agent
-    agent.pause()
+    await agent.pause()
 
     # Try to execute
     result = await agent.execute(message="test")

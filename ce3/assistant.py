@@ -1,17 +1,3 @@
-class Assistant:
-    def __init__(self):
-        # Regular initialization
-        self.tools = []
-        self.initialized = False
-        
-    @classmethod
-    async def create(cls):
-        # Create instance
-        instance = cls()
-        # Do async initialization
-        await instance.initialize()
-        return instance
-        
-    async def initialize(self):
-        # Put your async initialization code here
-        self.initialized = True
+# This file is deprecated - implementation moved to ce3.py
+# Keeping as a placeholder for backward compatibility
+from ce3 import Assistant

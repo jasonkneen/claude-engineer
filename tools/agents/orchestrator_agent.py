@@ -1,4 +1,4 @@
-from tools.agent_base import AgentBaseTool
+from ..agent_base import AgentBaseTool
 from typing import Dict, Any, List
 from enum import Enum
 

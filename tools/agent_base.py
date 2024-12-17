@@ -39,17 +39,29 @@ class AgentState:
         return cls(**data)
 
 class AgentBaseTool(BaseTool):
-    def __init__(self, agent_id: str, role: Union[AgentRole, str], name: Optional[str] = None):
+    def __init__(self, agent_id: str, role: Union[AgentRole, str], name: Optional[str] = None, custom_role: Optional[str] = None):
         """Initialize agent tool with ID, role and optional name."""
         # Don't call super().__init__() here since it's async
         self._agent_id = agent_id
-        # Handle string role input
+
+        # Handle role and custom_role
         if isinstance(role, str):
-            self._role = AgentRole.CUSTOM
-            self._custom_role = role
+            try:
+                role_upper = role.upper()
+                if role_upper == "SPECIALIZED":
+                    self._role = AgentRole.CUSTOM
+                    self._custom_role = "specialized"
+                elif role_upper in AgentRole.__members__:
+                    self._role = AgentRole[role_upper]
+                    self._custom_role = None
+                else:
+                    self._role = AgentRole.CUSTOM
+                    self._custom_role = role.lower()
+            except (KeyError, ValueError):
+                raise ValueError(f"Invalid role: {role}")
         else:
             self._role = role
-            self._custom_role = "custom" if role == AgentRole.CUSTOM else None
+            self._custom_role = custom_role if custom_role is not None else ("custom" if role == AgentRole.CUSTOM else None)
 
         self._name = name or f"agent_{self._role.value}_{agent_id}".lower()
         self._description = f"Agent-based tool for {self._role.value} operations"
@@ -91,6 +103,7 @@ class AgentBaseTool(BaseTool):
     async def initialize(self):
         """Async initialization method."""
         await super().initialize()
+        self._executor = ThreadPoolExecutor(max_workers=4)  # Add thread pool executor
 
     @property
     def input_schema(self) -> Dict[str, Any]:
@@ -148,12 +161,12 @@ class AgentBaseTool(BaseTool):
         """Execute a custom action."""
         return f"Processed action with args: {kwargs}"
 
-    def pause(self):
-        """Pause agent operations synchronously."""
+    async def pause(self):
+        """Pause agent operations."""
         self.state.is_paused = True
 
-    def resume(self):
-        """Resume agent operations synchronously."""
+    async def resume(self):
+        """Resume agent operations."""
         self.state.is_paused = False
 
     async def get_state(self) -> Dict[str, Any]:
