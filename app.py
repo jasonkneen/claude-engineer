@@ -366,12 +366,26 @@ async def reset():
             detail=f"Error resetting assistant: {str(e)}"
         )
 
-@app.route('/agent-status', methods=['GET'])
+class AgentState(BaseModel):
+    id: str
+    name: str
+    role: Optional[str] = None
+    status: str
+    current_task: Optional[str] = None
+    progress: Optional[float] = None
+    task_history: Optional[List[str]] = None
+
+class AgentStatusResponse(BaseModel):
+    agents: List[AgentState]
+    voice_enabled: bool = False
+    error: Optional[str] = None
+
+@app.get('/agent-status', response_model=AgentStatusResponse)
 async def agent_status():
     """Get agent status information."""
     try:
-        if not app.assistant or not app.assistant.tools:
-            return jsonify({'error': 'Assistant not initialized'}), 500
+        if not assistant or not assistant.tools:
+            raise HTTPException(status_code=500, detail="Assistant not initialized")
 
         status = {
             'agents': [],
