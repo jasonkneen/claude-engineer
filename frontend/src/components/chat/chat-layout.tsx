@@ -32,7 +32,7 @@ export function ChatLayout({
     let reconnectTimer: NodeJS.Timeout;
     
     const connectWebSocket = () => {
-      const ws = new WebSocket('ws://localhost:8084/ws')
+      const ws = new WebSocket('ws://localhost:8085/ws')
       setSocket(ws)
 
       ws.onmessage = (event) => {
