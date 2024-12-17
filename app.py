@@ -217,7 +217,7 @@ async def chat(message: dict):
     """Legacy HTTP endpoint for chat."""
     try:
         message_text = message.get('message', '')
-        image_data = data.get('image')  # Get the base64 image data
+        image_data = message.get('image')  # Get the base64 image data
 
         if image_data:
             message_content = [
