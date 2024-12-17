@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 // Type declarations
@@ -93,7 +93,7 @@ export function CreateAgent({ className, ...props }: CreateAgentProps) {
     tools?: string[];
   }>({});
 
-  const fetchExistingAgents = async () => {
+  const fetchExistingAgents = useCallback(async () => {
     try {
       const response = await fetch('http://localhost:8000/agents');
       if (!response.ok) throw new Error('Failed to fetch agents');
@@ -104,7 +104,7 @@ export function CreateAgent({ className, ...props }: CreateAgentProps) {
       toast.error('Failed to load existing agents');
       setExistingAgents([]);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void fetchExistingAgents()
@@ -178,7 +178,7 @@ export function CreateAgent({ className, ...props }: CreateAgentProps) {
     }
   }
 
-  const handleCreateAgent = async (): Promise<void> => {
+  const handleCreateAgent = useCallback(async () => {
     if (!description) {
       toast.error('Please provide a description of the agent');
       return;
