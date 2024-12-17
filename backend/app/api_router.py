@@ -185,9 +185,16 @@ class APIRouter(AbstractContextManager):
                     temperature=config.temperature
                 )
             )
+            
+            # Extract content and format response consistently
+            content = response.choices[0].message.content if response.choices else ""
+            
             return {
-                "content": response.choices[0].message.content,
-                "usage": response.usage,
+                "content": content,
+                "usage": {
+                    "input_tokens": getattr(response.usage, "prompt_tokens", 0),
+                    "output_tokens": getattr(response.usage, "completion_tokens", 0)
+                },
                 "model": response.model,
                 "role": "assistant"
             }
