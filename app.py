@@ -349,10 +349,22 @@ async def upload_file(file: UploadFile = File(...)):
             detail=f"Error uploading file: {str(e)}"
         )
 
-@app.route('/reset', methods=['POST'])
+class ResetResponse(BaseModel):
+    status: str
+    message: Optional[str] = None
+
+@app.post('/reset', response_model=ResetResponse)
 async def reset():
-    assistant.reset()
-    return jsonify({'status': 'success'})
+    """Reset assistant state."""
+    try:
+        assistant.reset()
+        return ResetResponse(status="success", message="Assistant state reset successfully")
+    except Exception as e:
+        logging.error(f"Error resetting assistant: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error resetting assistant: {str(e)}"
+        )
 
 @app.route('/agent-status', methods=['GET'])
 async def agent_status():
