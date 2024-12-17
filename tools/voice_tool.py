@@ -17,22 +17,7 @@ class VoiceRole(Enum):
     VOICE_CONTROL = "voice_control"
 
 class VoiceTool(BaseTool):
-    def __init__(self):
-        super().__init__()
-        self._voice_speed = 1.0
-        self._voice_volume = 1.0  # Changed from 0.8 to 1.0 to match test
-        self._name = "voice"
-        self._description = "Voice synthesis and processing tool"
-
-    @property
-    def voice_speed(self) -> float:
-        return self._voice_speed
-
-    @property
-    def voice_volume(self) -> float:
-        return self._voice_volume
-
-    def __init__(self, agent_id: str, role: VoiceRole, name: Optional[str] = None):
+    def __init__(self, agent_id: str = None, role: VoiceRole = VoiceRole.VOICE_CONTROL, name: Optional[str] = None):
         """Initialize voice tool with specified role.
 
         Args:
@@ -40,7 +25,10 @@ class VoiceTool(BaseTool):
             role: Role defining primary function (TTS, STT, or control)
             name: Optional display name for the voice tool
         """
-        super().__init__(name=name or f"voice_{agent_id}")
+        self._voice_speed = 1.0
+        self._voice_volume = 0.8  # Initialize volume before using it
+        self._name = "voice"
+        self._description = "Voice synthesis and processing tool"
         self.agent_id = agent_id
         self.role = role
         self.tts_engine = None
@@ -52,6 +40,17 @@ class VoiceTool(BaseTool):
         self.recording = False
         self.record_thread = None
         self.logger = logging.getLogger(__name__)
+
+        # Initialize base tool
+        super().__init__(name=name or f"voice_{agent_id}")
+
+    @property
+    def voice_speed(self) -> float:
+        return self._voice_speed
+
+    @property
+    def voice_volume(self) -> float:
+        return self._voice_volume
 
     @property
     def description(self) -> str:
@@ -94,7 +93,7 @@ class VoiceTool(BaseTool):
                 self.logger.info("Initializing TTS engine...")
                 self.tts_engine = pyttsx3.init()
                 self.tts_engine.setProperty('rate', 150)
-                self.tts_engine.setProperty('volume', 0.8)  # Set initial volume to 0.8
+                self.tts_engine.setProperty('volume', self._voice_volume)
                 self.logger.info("TTS engine initialized successfully")
         except Exception as e:
             self.logger.error(f"Failed to initialize TTS engine: {str(e)}")
@@ -153,7 +152,8 @@ class VoiceTool(BaseTool):
     async def set_volume(self, volume: float = 0.9):
         """Set speech volume."""
         await self.initialize_tts()
-        self.tts_engine.setProperty('volume', volume)
+        self._voice_volume = volume  # Update instance variable first
+        self.tts_engine.setProperty('volume', volume)  # Then update engine property
 
     async def _speak(self, text: str) -> str:
         """Internal method to speak text."""

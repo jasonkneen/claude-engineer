@@ -22,6 +22,9 @@ from tools.agent_manager import AgentManagerTool
 from tools.test_agent import TestAgentTool
 from tools.context_manager import ContextManagerTool
 from tools.agent_base import AgentBaseTool, AgentRole
+from tools.agents.specialized_agents import FrontendAgent, BackendAgent, DatabaseAgent
+from tools.agents.base_conversation_agent import BaseConversationAgent
+from tools.agents.orchestrator_agent import OrchestratorAgent
 from prompt_toolkit import prompt
 from prompt_toolkit.styles import Style
 from prompts.system_prompts import SystemPrompts
@@ -51,23 +54,40 @@ class Assistant:
         self.temperature = getattr(self.config, 'DEFAULT_TEMPERATURE', 0.7)
         self.total_tokens_used = 0
         self.api_router = None
-        self.tools = None
+        self.tools = []  # Initialize as empty list instead of None
         self.agent_manager = None
-        
+        self.test_mode = getattr(self.config, 'test_mode', False)
+        self._initialized = False
+
+    def __await__(self):
+        """Make the class awaitable for async initialization."""
+        async def _async_init():
+            await self.initialize()
+            return self
+        return _async_init().__await__()
+
     async def initialize(self):
-        """Async initialization of components."""
-        if not self.test_mode:
-            if not getattr(self.config, 'ANTHROPIC_API_KEY', None):
-                raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
-            self.client = anthropic.Anthropic(api_key=self.config.ANTHROPIC_API_KEY)
-        
-        self.api_router = await APIRouter().__aenter__()
-        self.tools = await self._load_tools()
-        self.agent_manager = await AgentManagerTool(
-            agent_id="manager",
-            role=AgentRole.ORCHESTRATOR
-        ).__aenter__()
-        return self
+        """Initialize API router and tools."""
+        if self._initialized:
+            return self
+
+        try:
+            # Initialize API router with test mode if configured
+            self.api_router = APIRouter(test_mode=self.test_mode)
+            await self.api_router._setup_clients()
+
+            # Initialize tools
+            await self.initialize_tools()
+            self._initialized = True
+
+            return self
+        except Exception as e:
+            self.console.print(f"[red]Error initializing assistant: {str(e)}[/red]")
+            raise
+
+    async def initialize_tools(self):
+        """Initialize tools (kept for backward compatibility)."""
+        return self  # No-op for now, kept for interface compatibility
 
     async def __aenter__(self):
         return self

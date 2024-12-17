@@ -3,6 +3,9 @@ from ce3 import Assistant
 from tools.agent_base import AgentBaseTool, AgentRole
 from tools.voice_tool import VoiceTool, VoiceRole
 from tools.base import BaseTool
+from tools.agents.specialized_agents import FrontendAgent, BackendAgent, DatabaseAgent
+from tools.agents.base_conversation_agent import BaseConversationAgent
+from tools.agents.orchestrator_agent import OrchestratorAgent
 import os
 import time
 from werkzeug.utils import secure_filename
@@ -12,9 +15,7 @@ import importlib
 import inspect
 from typing import List, Type
 import asyncio
-
 import logging
-
 
 app = Quart(__name__, static_folder='static')
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -31,11 +32,18 @@ agent_config = {}
 @app.before_serving
 async def startup():
     """Initialize assistant and tools before serving."""
-    global assistant, tools
-    assistant = await Assistant.create()
-    tools = await load_tools()
-    for tool_name, tool in tools.items():
-        assistant.tools.append(tool)
+    global assistant
+    try:
+        config = Config()
+        config.test_mode = True  # Enable test mode for development
+        assistant = await Assistant(config)  # Now properly awaitable
+        app.assistant = assistant  # Make assistant available in app context
+        tools = await load_tools()
+        for tool in tools.values():
+            assistant.tools.append(tool)
+    except Exception as e:
+        logging.error(f"Error during startup: {str(e)}")
+        raise
 
 @app.route('/')
 async def home():
@@ -54,13 +62,29 @@ async def toggle_dark_mode():
 @app.route('/agent-config', methods=['GET', 'POST'])
 async def handle_agent_config():
     """Handle agent configuration."""
-    global agent_config
-    if request.method == 'POST':
+    try:
+        if request.method == 'POST':
+            data = await request.get_json()
+            agent_config.update(data)
+        return jsonify({'agents': agent_config})
+    except Exception as e:
+        logging.error(f"Error in agent-config endpoint: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/update-agent-config', methods=['POST'])
+async def update_agent_config():
+    """Update agent configuration."""
+    try:
         data = await request.get_json()
         agent_config.update(data)
-    return jsonify(agent_config)
+        return jsonify({
+            'status': 'updated',
+            'config': agent_config
+        })
+    except Exception as e:
+        logging.error(f"Error updating agent config: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
-# Initialize tools
 async def load_tools():
     """Load and initialize all tools from the tools directory."""
     tools_dir = os.path.join(os.path.dirname(__file__), 'tools')
@@ -74,14 +98,12 @@ async def load_tools():
             try:
                 module = importlib.import_module(f'tools.{module_name}')
                 for name, obj in inspect.getmembers(module):
-                    # Skip if already processed or not a tool class
                     if (not inspect.isclass(obj) or
                         obj.__module__ != f'tools.{module_name}' or
                         not name.endswith('Tool') or
                         obj in processed_classes):
                         continue
 
-                    # Skip abstract base classes
                     if inspect.isabstract(obj):
                         continue
 
@@ -90,8 +112,7 @@ async def load_tools():
                     agent_id = f"{tool_name}_{timestamp}"
 
                     try:
-                        # Initialize based on class hierarchy
-                        if AgentBaseTool in obj.__mro__[1:]:  # Check if AgentBaseTool is in the inheritance chain
+                        if AgentBaseTool in obj.__mro__[1:]:
                             role_map = {
                                 'AgentManagerTool': AgentRole.ORCHESTRATOR,
                                 'TestAgentTool': AgentRole.TEST,
@@ -106,11 +127,11 @@ async def load_tools():
                             tool = obj(agent_id=agent_id, role=role, name=name)
                             await tool.initialize()
 
-                        elif VoiceTool in obj.__mro__[1:]:  # Check if VoiceTool is in the inheritance chain
+                        elif VoiceTool in obj.__mro__[1:]:
                             tool = obj(agent_id=agent_id, role=VoiceRole.VOICE_CONTROL, name=f"Voice_{name}")
                             await tool.initialize()
 
-                        elif BaseTool in obj.__mro__[1:]:  # Direct BaseTool subclasses
+                        elif BaseTool in obj.__mro__[1:]:
                             tool = obj(name=name)
                             await tool.initialize()
 
@@ -129,8 +150,6 @@ async def load_tools():
 
     return tools
 
-
-
 @app.route('/chat', methods=['POST'])
 async def chat():
     try:
@@ -138,40 +157,33 @@ async def chat():
         message = data.get('message', '')
         image_data = data.get('image')  # Get the base64 image data
 
-        # Prepare the message content
         if image_data:
-            # Create a message with both text and image in correct order
             message_content = [
                 {
                     "type": "image",
                     "source": {
                         "type": "base64",
-                        "media_type": "image/jpeg",  # We should detect this from the image
-                        "data": image_data.split(',')[1] if ',' in image_data else image_data  # Remove data URL prefix if present
+                        "media_type": "image/jpeg",
+                        "data": image_data.split(',')[1] if ',' in image_data else image_data
                     }
                 }
             ]
 
-            # Only add text message if there is actual text
             if message.strip():
                 message_content.append({
                     "type": "text",
                     "text": message
                 })
         else:
-            # Text-only message
             message_content = message
 
-        # Handle the chat message with the appropriate content
         response = await assistant.chat(message_content)
 
-        # Get token usage from assistant
         token_usage = {
             'total_tokens': assistant.total_tokens_used,
             'max_tokens': Config.MAX_CONVERSATION_TOKENS
         }
 
-        # Get the last used tool from the conversation history
         tool_name = None
         if assistant.conversation_history:
             for msg in reversed(assistant.conversation_history):
@@ -199,7 +211,7 @@ async def chat():
             'thinking': False,
             'tool_name': None,
             'token_usage': None
-        }), 200  # Return 200 even for errors to handle them gracefully in frontend
+        }), 200
 
 @app.route('/upload', methods=['POST'])
 async def upload_file():
@@ -216,14 +228,11 @@ async def upload_file():
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             await file.save(filepath)
     
-            # Get the actual media type
-            media_type = file.content_type or 'image/jpeg'  # Default to jpeg if not detected
+            media_type = file.content_type or 'image/jpeg'
     
-            # Convert image to base64
             with open(filepath, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
     
-            # Clean up the file
             os.remove(filepath)
     
             return jsonify({
@@ -239,79 +248,112 @@ async def upload_file():
 
 @app.route('/reset', methods=['POST'])
 async def reset():
-    # Reset the assistant's conversation history
     assistant.reset()
     return jsonify({'status': 'success'})
 
 @app.route('/agent-status', methods=['GET'])
 async def agent_status():
-    """Get status of all agents."""
+    """Get agent status information."""
     try:
-        agent_statuses = []
-        for tool in tools.values():  # Use tools dict instead of assistant.tools
-            if isinstance(tool, AgentBaseTool):
-                state = tool.get_state()
-                agent_statuses.append({
-                    'id': tool.agent_id,
-                    'name': tool.name,
-                    'role': tool.role.value,
-                    'status': 'Active' if not state.is_paused else 'Paused',
-                    'current_task': state.current_task,
-                    'progress': state.progress,
-                    'task_history': state.task_history
-                })
-        return jsonify({'agents': agent_statuses})
+        if not app.assistant or not app.assistant.tools:
+            return jsonify({'error': 'Assistant not initialized'}), 500
+
+        status = {
+            'agents': [],
+            'voice_enabled': False
+        }
+
+        for tool in app.assistant.tools:
+            if hasattr(tool, 'get_state'):
+                try:
+                    tool_state = await tool.get_state()
+                    agent_status = {
+                        'id': getattr(tool, 'agent_id', tool.__class__.__name__),
+                        'name': getattr(tool, 'name', tool.__class__.__name__),
+                        'role': getattr(tool, 'role', None).value if hasattr(tool, 'role') and getattr(tool, 'role', None) else None,
+                        'status': 'Active' if not tool_state.get('is_paused', False) else 'Paused',
+                        'current_task': tool_state.get('current_task'),
+                        'progress': tool_state.get('progress'),
+                        'task_history': tool_state.get('task_history', [])
+                    }
+                    status['agents'].append(agent_status)
+                except Exception as e:
+                    logging.error(f"Error getting state for tool {tool.__class__.__name__}: {str(e)}")
+
+            if hasattr(tool, 'role') and getattr(tool, 'role', None) == VoiceRole.VOICE_CONTROL:
+                status['voice_enabled'] = True
+
+        return jsonify(status)
     except Exception as e:
+        logging.error(f"Error in agent-status endpoint: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/speak', methods=['POST'])
 async def speak():
-    """Text-to-speech endpoint."""
+    """Handle text-to-speech requests."""
     try:
+        if not app.assistant or not app.assistant.tools:
+            return jsonify({'error': 'Assistant not initialized'}), 500
+
         data = await request.get_json()
-        text = data.get('text', '')
+        text = data.get('text')
         if not text:
             return jsonify({'error': 'No text provided'}), 400
 
-        voice_tool = VoiceTool(agent_id="tts_agent", role=VoiceRole.TTS, name="TTS Agent")
-        await voice_tool.speak(text)
-        return jsonify({'status': 'success'})
+        voice_tool = next((tool for tool in app.assistant.tools if hasattr(tool, 'role') and getattr(tool, 'role', None) == VoiceRole.VOICE_CONTROL), None)
+        if not voice_tool:
+            return jsonify({'error': 'Voice tool not available'}), 500
+
+        try:
+            audio_path = await voice_tool.speak(text)
+            return jsonify({
+                'status': 'success',
+                'audio_path': audio_path
+            })
+        except Exception as e:
+            logging.error(f"Error generating speech: {str(e)}")
+            return jsonify({'error': f'Speech generation failed: {str(e)}'}), 500
+
     except Exception as e:
+        logging.error(f"Error in speak endpoint: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/transcribe', methods=['POST'])
 async def transcribe():
-    """Speech-to-text endpoint."""
-    if 'audio' not in await request.files:
-        return jsonify({'error': 'No audio file provided'}), 400
+    """Handle speech-to-text requests."""
+    try:
+        if not app.assistant or not app.assistant.tools:
+            return jsonify({'error': 'Assistant not initialized'}), 500
 
-    audio_file = (await request.files)['audio']
-    if audio_file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
+        files = await request.files
+        if 'audio' not in files:
+            return jsonify({'error': 'No audio file provided'}), 400
 
-    if audio_file:
-        filename = secure_filename(audio_file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        await audio_file.save(filepath)
+        audio_file = files['audio']
+        if not audio_file.filename:
+            return jsonify({'error': 'Invalid audio file'}), 400
+
+        temp_path = os.path.join(os.path.dirname(__file__), 'static', 'uploads', f'temp_{int(time.time())}.wav')
+        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+        await audio_file.save(temp_path)
+
+        voice_tool = next((tool for tool in app.assistant.tools if hasattr(tool, 'role') and getattr(tool, 'role', None) == VoiceRole.VOICE_CONTROL), None)
+        if not voice_tool:
+            os.remove(temp_path)
+            return jsonify({'error': 'Voice tool not available'}), 500
 
         try:
-            voice_tool = VoiceTool(agent_id="stt_agent", role=VoiceRole.STT, name="STT Agent")
-            text = await voice_tool.transcribe(filepath)
-
-            # Clean up the audio file
-            os.remove(filepath)
-
-            return jsonify({
-                'success': True,
-                'text': text
-            })
+            text = await voice_tool.transcribe(temp_path)
+            os.remove(temp_path)
+            return jsonify({'text': text})
         except Exception as e:
-            # Clean up on error
-            if os.path.exists(filepath):
-                os.remove(filepath)
-            return jsonify({'error': str(e)}), 500
+            os.remove(temp_path)
+            logging.error(f"Error transcribing audio: {str(e)}")
+            return jsonify({'error': f'Transcription failed: {str(e)}'}), 500
 
-    return jsonify({'error': 'Invalid audio file'}), 400
+    except Exception as e:
+        logging.error(f"Error in transcribe endpoint: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/create-flow', methods=['POST'])
 async def create_flow():
@@ -325,7 +367,6 @@ async def create_flow():
         if not all(field in data for field in required_fields):
             return jsonify({'error': 'Missing required fields'}), 400
 
-        # Validate steps
         steps = data['steps']
         if not isinstance(steps, list) or not steps:
             return jsonify({'error': 'Steps must be a non-empty list'}), 400
@@ -334,7 +375,6 @@ async def create_flow():
             if not isinstance(step, dict) or 'type' not in step or 'content' not in step:
                 return jsonify({'error': 'Invalid step format'}), 400
 
-        # Create flow ID
         flow_id = f"flow_{int(time.time())}"
 
         return jsonify({
@@ -347,4 +387,4 @@ async def create_flow():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=False, port=5000, host='0.0.0.0')
+    app.run(debug=False, port=6606, host='localhost')

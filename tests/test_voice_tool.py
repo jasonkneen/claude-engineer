@@ -4,7 +4,25 @@ from tools.voice_tool import VoiceTool, VoiceRole
 import os
 
 @pytest_asyncio.fixture
-async def voice_tool():
+async def voice_tool(mocker):
+    """Create voice tool fixture with mocked TTS."""
+    # Create a properties dict to track TTS engine state
+    mock_voice = mocker.MagicMock()
+    mock_voice.id = "mock_voice_1"
+
+    properties = {
+        'rate': 150,
+        'volume': 0.8,
+        'voices': [mock_voice]
+    }
+
+    # Mock TTS engine
+    mock_tts = mocker.MagicMock()
+    mock_tts.getProperty = mocker.MagicMock(side_effect=lambda prop: properties[prop])
+    mock_tts.setProperty = mocker.MagicMock(side_effect=lambda prop, val: properties.__setitem__(prop, val))
+    mock_tts.runAndWait = mocker.MagicMock()  # Add runAndWait mock
+    mocker.patch('pyttsx3.init', return_value=mock_tts)
+
     tool = VoiceTool(agent_id="test_voice", role=VoiceRole.VOICE_CONTROL)
     await tool.initialize_tts()
     return tool
