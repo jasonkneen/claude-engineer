@@ -135,13 +135,30 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
   }
 
   const handleCreateAgent = async (): Promise<void> => {
-    if (!description || !parsedAgent.name || !parsedAgent.role) {
+    if (!description) {
       toast.error('Please provide a description of the agent')
       return
     }
 
     setIsCreating(true)
     try {
+      // First parse the description
+      const parseResponse = await fetch('http://localhost:8000/parse-agent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ description }),
+      })
+
+      if (!parseResponse.ok) {
+        throw new Error('Failed to parse agent description')
+      }
+
+      const parsedData = await parseResponse.json()
+      setParsedAgent(parsedData)
+
+      // Then create the agent
       const response = await fetch('http://localhost:8000/agents', {
         method: 'POST',
         headers: {
@@ -149,7 +166,7 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
         },
         body: JSON.stringify({
           description,
-          ...parsedAgent
+          ...parsedData
         }),
       })
 
@@ -234,7 +251,7 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
               <Button 
                 className="w-full" 
                 onClick={handleCreateAgent} 
-                disabled={isCreating || !name || !role || selectedTools.length === 0}
+                disabled={isCreating || !description}
               >
                 {isCreating ? 'Creating...' : 'Create Agent'}
               </Button>
