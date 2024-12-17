@@ -167,11 +167,11 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
 
   const handleCreateAgent = async (): Promise<void> => {
     if (!description) {
-      toast.error('Please provide a description of the agent')
-      return
+      toast.error('Please provide a description of the agent');
+      return;
     }
 
-    setIsCreating(true)
+    setIsCreating(true);
     try {
       // First parse the description
       const parseResponse = await fetch('http://localhost:8000/parse-agent', {
@@ -181,7 +181,7 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
         },
         body: JSON.stringify({ description })
       }).catch(error => {
-        throw new Error(`Network error: ${error.message}`)
+        throw new Error(`Network error: ${error.message}`);
       });
 
       if (!parseResponse.ok) {
@@ -203,14 +203,21 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
           ...parsedData
         })
       }).catch(error => {
-        throw new Error(`Network error: ${error.message}`)
+        throw new Error(`Network error: ${error.message}`);
       });
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          description,
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to create agent');
+      }
+
+      const data = await response.json();
+      toast.success(`Agent created successfully with ID: ${data.agent_id}`);
+      
+      // Reset form state
+      setDescription('');
+      setParsedAgent({});
+      void fetchExistingAgents();
           ...parsedData
         }),
       })
