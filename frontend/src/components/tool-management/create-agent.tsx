@@ -5,9 +5,10 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ToolList } from './tool-list'
+import { Mic, MicOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -57,25 +58,68 @@ interface CreateAgentProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Element {
-  const [name, setName] = useState<string>('')
-  const [role, setRole] = useState<string>('')
-  const [selectedTools, setSelectedTools] = useState<string[]>([])
+  const [description, setDescription] = useState<string>('')
+  const [isRecording, setIsRecording] = useState<boolean>(false)
   const [isCreating, setIsCreating] = useState<boolean>(false)
   const [existingAgents, setExistingAgents] = useState<Agent[]>([])
   const [activeTab, setActiveTab] = useState<string>('create')
+  const [parsedAgent, setParsedAgent] = useState<{
+    name?: string;
+    role?: string;
+    tools?: string[];
+  }>({})
 
   useEffect(() => {
     void fetchExistingAgents()
   }, [])
 
   useEffect(() => {
-    if (role) {
-      const selectedRole = AGENT_ROLES.find(r => r.value === role)
-      if (selectedRole?.recommendedTools.length) {
-        setSelectedTools(selectedRole.recommendedTools)
-      }
+    if (description) {
+      void parseAgentDescription(description)
     }
-  }, [role])
+  }, [description])
+
+  const parseAgentDescription = async (text: string): Promise<void> => {
+    try {
+      const response = await fetch('http://localhost:8000/parse-agent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ description: text }),
+      })
+
+      if (!response.ok) throw new Error('Failed to parse agent description')
+      const data = await response.json()
+      setParsedAgent(data)
+    } catch (error) {
+      console.error('Error parsing agent description:', error)
+      toast.error('Failed to parse agent description')
+    }
+  }
+
+  const toggleRecording = async () => {
+    if (!isRecording) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        // Initialize voice recognition
+        const recognition = new (window.webkitSpeechRecognition || window.SpeechRecognition)()
+        recognition.continuous = true
+        recognition.onresult = (event) => {
+          const transcript = event.results[event.results.length - 1][0].transcript
+          setDescription(prev => prev + ' ' + transcript)
+        }
+        recognition.start()
+        setIsRecording(true)
+      } catch (error) {
+        console.error('Error accessing microphone:', error)
+        toast.error('Failed to access microphone')
+      }
+    } else {
+      // Stop recording
+      setIsRecording(false)
+    }
+  }
 
   const fetchExistingAgents = async (): Promise<void> => {
     try {
@@ -91,8 +135,8 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
   }
 
   const handleCreateAgent = async (): Promise<void> => {
-    if (!name || !role || selectedTools.length === 0) {
-      toast.error('Please fill in all fields and select at least one tool')
+    if (!description || !parsedAgent.name || !parsedAgent.role) {
+      toast.error('Please provide a description of the agent')
       return
     }
 
@@ -104,9 +148,8 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          name,
-          role,
-          tools: selectedTools,
+          description,
+          ...parsedAgent
         }),
       })
 
@@ -144,40 +187,48 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
           <TabsContent value="create" className="space-y-6">
             <div className="space-y-6">
               <div className="space-y-2">
-                <label htmlFor="name" className="text-sm font-medium">
-                  Agent Name
+                <label htmlFor="description" className="text-sm font-medium">
+                  Describe Your Agent
                 </label>
-                <Input
-                  id="name"
-                  type="text"
-                  placeholder="Enter agent name"
-                  value={name}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  Agent Role
-                </label>
-                <Select value={role} onValueChange={setRole}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {AGENT_ROLES.map((role) => (
-                      <SelectItem key={role.value} value={role.value}>
-                        {role.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-2">
+                  <Textarea
+                    id="description"
+                    placeholder="Describe what you want your agent to do... (e.g., 'Create a test agent that can validate API endpoints')"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="min-h-[100px]"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={toggleRecording}
+                    className="flex-shrink-0"
+                  >
+                    {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
 
-              <ToolList 
-                onToolSelect={setSelectedTools} 
-                recommendedTools={role ? AGENT_ROLES.find(r => r.value === role)?.recommendedTools || [] : []}
-              />
+              {parsedAgent.name && (
+                <div className="space-y-4 p-4 bg-muted rounded-lg">
+                  <div>
+                    <span className="font-medium">Name:</span> {parsedAgent.name}
+                  </div>
+                  <div>
+                    <span className="font-medium">Role:</span> {parsedAgent.role}
+                  </div>
+                  {parsedAgent.tools && parsedAgent.tools.length > 0 && (
+                    <div>
+                      <span className="font-medium">Selected Tools:</span>
+                      <ul className="list-disc list-inside mt-1">
+                        {parsedAgent.tools.map((tool) => (
+                          <li key={tool}>{tool}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="mt-6">
               <Button 
