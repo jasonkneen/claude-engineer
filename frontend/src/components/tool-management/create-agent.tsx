@@ -131,8 +131,8 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
   return (
     <Card className={cn("w-full max-w-2xl mx-auto", className)} {...props}>
       <CardHeader>
-        <CardTitle>Agent Management</CardTitle>
-        <CardDescription>Create and manage your AI agents</CardDescription>
+        <CardTitle>Create New Agent</CardTitle>
+        <CardDescription>Configure your agent with tools and capabilities</CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue={activeTab} onValueChange={setActiveTab}>
