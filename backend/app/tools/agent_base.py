@@ -41,42 +41,34 @@ class AgentState:
 class AgentBaseTool(BaseTool):
     def __init__(self, agent_id: str, role: AgentRole, name: Optional[str] = None):
         """Initialize agent tool with ID, role and optional name."""
-        super().__init__()
+        super().__init__(name or f"agent_{role.value}_{agent_id}")
         self._agent_id = agent_id
         self._role = role
-        self._name = name or self.__class__.__name__.lower()
         self._description = "Base agent tool for handling agent operations"
         self._lock = asyncio.Lock()
+        self.logger = logging.getLogger(__name__)
         self.state = AgentState(
             agent_id=agent_id,
-            agent_type=self._name,
+            agent_type=self.name,
             is_paused=False
         )
     
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        # Cleanup
-        pass
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property 
-    def description(self) -> str:
-        return self._description
-
-    async def execute(self, command: str, **kwargs):
-        async with self._lock:
-            if self._paused:
-                return "Agent is currently paused"
-            return f"Processed: {command}"
-
     async def initialize(self):
         """Async initialization method."""
         await super().initialize()
+        # Additional initialization can be added here
+
+    @property
+    def agent_id(self) -> str:
+        return self._agent_id
+
+    @property
+    def role(self) -> AgentRole:
+        return self._role
+
+    @property
+    def description(self) -> str:
+        return self._description
 
     @property
     def input_schema(self) -> Dict[str, Any]:
@@ -108,7 +100,7 @@ class AgentBaseTool(BaseTool):
         Returns:
             Execution result as string
         """
-        async with self._lock:  # Use asyncio.Lock instead of threading.Lock
+        async with self._lock:
             if self.state.is_paused:
                 return f"Agent {self.agent_id} is currently paused"
 
@@ -145,6 +137,14 @@ class AgentBaseTool(BaseTool):
         """
         raise NotImplementedError("Agent implementations must override _process_message")
 
+    async def _execute_action(self, **kwargs) -> str:
+        """Execute custom agent actions.
+
+        This method should be overridden by specific agent implementations
+        to provide custom action handling.
+        """
+        raise NotImplementedError("Agent implementations must override _execute_action")
+
     async def pause(self) -> None:
         """Pause agent operations"""
         async with self._lock:
@@ -164,3 +164,7 @@ class AgentBaseTool(BaseTool):
         """Update agent context"""
         async with self._lock:
             self.state.context = context
+
+    async def close(self):
+        """Clean up resources"""
+        pass
