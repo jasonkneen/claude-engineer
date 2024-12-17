@@ -32,7 +32,9 @@ agent_config = {}
 async def startup():
     """Initialize assistant and tools before serving."""
     global assistant, tools
-    assistant = await Assistant.create()
+    config = Config()
+    assistant = Assistant(config)
+    await assistant.initialize()  # This includes tool initialization
     tools = await load_tools()
     for tool_name, tool in tools.items():
         assistant.tools.append(tool)

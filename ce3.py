@@ -53,6 +53,7 @@ class Assistant:
         self.api_router = None
         self.tools = None
         self.agent_manager = None
+        self.test_mode = getattr(self.config, 'TEST_MODE', False)
         
     async def initialize(self):
         """Async initialization of components."""
