@@ -192,28 +192,34 @@ class APIRouter(AbstractContextManager):
         config: APIConfig
     ) -> Dict[str, Any]:
         """Handle OpenAI API request"""
-        loop = asyncio.get_event_loop()
         try:
-            response = await loop.run_in_executor(
-                self._executor,
-                lambda: self.openai_client.chat.completions.create(
-                    model=config.model,
-                    messages=messages,
-                    max_tokens=config.max_tokens,
-                    temperature=config.temperature
-                )
+            # Format messages for OpenAI API
+            formatted_messages = []
+            for msg in messages:
+                if isinstance(msg, dict):
+                    formatted_messages.append({
+                        "role": msg.get("role", "user"),
+                        "content": str(msg.get("content", ""))
+                    })
+
+            # Make API request
+            response = await self.openai_client.chat.completions.create(
+                model=config.model,
+                messages=formatted_messages,
+                max_tokens=config.max_tokens,
+                temperature=config.temperature
             )
-            
-            # Extract content and format response consistently
+
+            # Extract content and format response
             content = response.choices[0].message.content if response.choices else ""
-            
+
             return {
-                "content": content,
+                "content": str(content),
                 "usage": {
-                    "input_tokens": getattr(response.usage, "prompt_tokens", 0),
-                    "output_tokens": getattr(response.usage, "completion_tokens", 0)
+                    "input_tokens": int(getattr(response.usage, "prompt_tokens", 0)),
+                    "output_tokens": int(getattr(response.usage, "completion_tokens", 0))
                 },
-                "model": response.model,
+                "model": str(response.model),
                 "role": "assistant"
             }
         except Exception as e:
