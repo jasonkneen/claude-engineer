@@ -152,28 +152,34 @@ class APIRouter(AbstractContextManager):
         config: APIConfig
     ) -> Dict[str, Any]:
         """Handle Anthropic API request"""
-        loop = asyncio.get_event_loop()
         try:
-            response = await loop.run_in_executor(
-                self._executor,
-                lambda: self.anthropic_client.messages.create(
-                    model=config.model,
-                    max_tokens=config.max_tokens,
-                    temperature=config.temperature,
-                    messages=messages
-                )
+            # Format messages for Anthropic API
+            formatted_messages = []
+            for msg in messages:
+                if isinstance(msg, dict):
+                    formatted_messages.append({
+                        "role": msg.get("role", "user"),
+                        "content": str(msg.get("content", ""))
+                    })
+
+            # Make API request
+            response = await self.anthropic_client.messages.create(
+                model=config.model,
+                max_tokens=config.max_tokens,
+                temperature=config.temperature,
+                messages=formatted_messages
             )
-            
+
             # Extract content from response
             content = response.content[0].text if isinstance(response.content, list) else response.content
-            
+
             return {
-                "content": content,
+                "content": str(content),
                 "usage": {
                     "input_tokens": getattr(response.usage, "input_tokens", 0),
                     "output_tokens": getattr(response.usage, "output_tokens", 0)
                 },
-                "model": response.model,
+                "model": str(response.model),
                 "role": "assistant"
             }
         except Exception as e:
