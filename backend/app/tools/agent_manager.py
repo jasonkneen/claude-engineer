@@ -59,13 +59,17 @@ class AgentManagerTool(BaseTool):
 
     def __init__(self, name: Optional[str] = None):
         """Initialize manager with API router and agent registry"""
-        super().__init__(name=name)
-        self.api_router = APIRouter()
+        super().__init__(name)
         self.agents: Dict[str, AgentBaseTool] = {}
         self._executor = ThreadPoolExecutor(max_workers=4)
         self.logger = logging.getLogger(__name__)
 
-    def execute(self, **kwargs) -> str:
+    async def initialize(self):
+        """Initialize the API router"""
+        self.api_router = APIRouter()
+        await self.api_router.initialize()
+
+    async def execute(self, **kwargs) -> str:
         """Execute agent management operations.
 
         Args:
@@ -83,15 +87,15 @@ class AgentManagerTool(BaseTool):
 
         try:
             if action == "create":
-                return self._create_agent(**kwargs)
+                return await self._create_agent(**kwargs)
             elif action == "pause":
-                return self._pause_agent(agent_id)
+                return await self._pause_agent(agent_id)
             elif action == "resume":
-                return self._resume_agent(agent_id)
+                return await self._resume_agent(agent_id)
             elif action == "list":
-                return self._list_agents()
+                return await self._list_agents()
             elif action == "delete":
-                return self._delete_agent(agent_id)
+                return await self._delete_agent(agent_id)
             else:
                 return f"Unknown action: {action}"
 
@@ -99,7 +103,7 @@ class AgentManagerTool(BaseTool):
             self.logger.error(f"Error in agent manager: {str(e)}")
             return f"Error: {str(e)}"
 
-    def _create_agent(self, **kwargs) -> str:
+    async def _create_agent(self, **kwargs) -> str:
         """Create new agent with specified configuration"""
         agent_id = kwargs.get("agent_id")
         if not agent_id:
@@ -131,10 +135,10 @@ class AgentManagerTool(BaseTool):
                 api_provider=kwargs.get("api_provider", "anthropic")
             )
 
-            agent = AgentBaseTool(
+            agent = await AgentBaseTool.create(
+                name=f"agent_{custom_role or role.name}_{agent_id}",
                 agent_id=agent_id,
-                role=role,
-                name=f"agent_{custom_role or role.name}_{agent_id}"
+                role=role
             )
             self.agents[agent_id] = agent
 
@@ -144,30 +148,30 @@ class AgentManagerTool(BaseTool):
         except Exception as e:
             return f"Error creating agent: {str(e)}"
 
-    def _pause_agent(self, agent_id: str) -> str:
+    async def _pause_agent(self, agent_id: str) -> str:
         """Pause specified agent"""
         if agent_id not in self.agents:
             return f"Agent {agent_id} not found"
 
-        self.agents[agent_id].pause()
+        await self.agents[agent_id].pause()
         return f"Paused agent {agent_id}"
 
-    def _resume_agent(self, agent_id: str) -> str:
+    async def _resume_agent(self, agent_id: str) -> str:
         """Resume specified agent"""
         if agent_id not in self.agents:
             return f"Agent {agent_id} not found"
 
-        self.agents[agent_id].resume()
+        await self.agents[agent_id].resume()
         return f"Resumed agent {agent_id}"
 
-    def _list_agents(self) -> str:
+    async def _list_agents(self) -> str:
         """List all registered agents and their states"""
         if not self.agents:
             return "No agents registered"
 
         result = []
         for agent_id, agent in self.agents.items():
-            state = agent.get_state()
+            state = await agent.get_state()
             display_role = agent.custom_role or agent.role.name
             result.append(
                 f"Agent: {agent_id}\n"
@@ -178,13 +182,13 @@ class AgentManagerTool(BaseTool):
 
         return "\n".join(result)
 
-    def _delete_agent(self, agent_id: str) -> str:
+    async def _delete_agent(self, agent_id: str) -> str:
         """Delete specified agent"""
         if agent_id not in self.agents:
             return f"Agent {agent_id} not found"
 
         agent = self.agents.pop(agent_id)
-        agent.pause()  # Ensure agent stops any ongoing work
+        await agent.pause()  # Ensure agent stops any ongoing work
         return f"Deleted agent {agent_id}"
 
     async def close(self):
