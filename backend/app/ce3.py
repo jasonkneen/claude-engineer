@@ -426,9 +426,19 @@ class Assistant:
         try:
             # Route request through API router and await the response
             try:
+                # Format messages for API request
+                formatted_messages = []
+                for msg in self.conversation_history:
+                    if isinstance(msg, dict):
+                        formatted_messages.append({
+                            "role": msg.get("role", "user"),
+                            "content": str(msg.get("content", ""))
+                        })
+
+                # Make API request
                 response = await self.api_router.route_request(
                     provider=Config.DEFAULT_PROVIDER,
-                    messages=[{"role": "user", "content": message} for message in self.conversation_history],
+                    messages=formatted_messages,
                     config=APIConfig(
                         model=Config.MODEL,
                         max_tokens=min(
@@ -451,7 +461,9 @@ class Assistant:
                 # Extract and format content
                 if isinstance(response, dict):
                     content = response.get('content', '')
-                    return str(content) if content else "No response content"
+                    if content:
+                        return str(content)
+                    return "No response content"
                 return str(response)
             except Exception as e:
                 self.console.print(f"[red]Error in completion:[/red] {str(e)}")
