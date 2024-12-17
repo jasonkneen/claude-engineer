@@ -45,11 +45,11 @@ interface Agent {
   tools: string[]
 }
 
-interface CreateAgentProps {
-  className?: string
+interface CreateAgentProps extends React.HTMLAttributes<HTMLDivElement> {
+  className?: string;
 }
 
-export function CreateAgent({ className }: CreateAgentProps) {
+export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Element {
   const [name, setName] = useState('')
   const [role, setRole] = useState('')
   const [selectedTools, setSelectedTools] = useState<string[]>([])
@@ -135,7 +135,7 @@ export function CreateAgent({ className }: CreateAgentProps) {
             <TabsTrigger value="existing">Existing Agents</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="create">
+          <TabsContent value="create" className="space-y-6">
             <div className="space-y-6">
         <div className="space-y-2">
           <label htmlFor="name" className="text-sm font-medium">
