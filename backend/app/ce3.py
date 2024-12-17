@@ -431,40 +431,48 @@ class Assistant:
                 for msg in self.conversation_history:
                     if isinstance(msg, dict):
                         formatted_messages.append({
-                            "role": msg.get("role", "user"),
+                            "role": str(msg.get("role", "user")),
                             "content": str(msg.get("content", ""))
                         })
 
-                # Make API request
-                response = await self.api_router.route_request(
-                    provider=Config.DEFAULT_PROVIDER,
-                    messages=formatted_messages,
-                    config=APIConfig(
-                        model=Config.MODEL,
-                        max_tokens=min(
-                            Config.MAX_TOKENS,
-                            Config.MAX_CONVERSATION_TOKENS - self.total_tokens_used
-                        ),
-                        temperature=self.temperature,
-                        tools=self.tools,
-                        system=f"{SystemPrompts.DEFAULT}\n\n{SystemPrompts.TOOL_USAGE}"
-                    )
+                # Prepare API request config
+                config = APIConfig(
+                    model=Config.MODEL,
+                    max_tokens=min(
+                        Config.MAX_TOKENS,
+                        Config.MAX_CONVERSATION_TOKENS - self.total_tokens_used
+                    ),
+                    temperature=self.temperature,
+                    tools=self.tools,
+                    system=f"{SystemPrompts.DEFAULT}\n\n{SystemPrompts.TOOL_USAGE}"
                 )
 
-                # Handle token usage
-                if isinstance(response, dict) and 'usage' in response:
-                    usage = response['usage']
-                    message_tokens = usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
-                    self.total_tokens_used += message_tokens
-                    self._display_token_usage(usage)
+                # Make API request
+                try:
+                    response = await self.api_router.route_request(
+                        provider=Config.DEFAULT_PROVIDER,
+                        messages=formatted_messages,
+                        config=config
+                    )
 
-                # Extract and format content
-                if isinstance(response, dict):
-                    content = response.get('content', '')
-                    if content:
-                        return str(content)
-                    return "No response content"
-                return str(response)
+                    # Handle token usage
+                    if isinstance(response, dict) and 'usage' in response:
+                        usage = response['usage']
+                        message_tokens = int(usage.get('input_tokens', 0)) + int(usage.get('output_tokens', 0))
+                        self.total_tokens_used += message_tokens
+                        self._display_token_usage(usage)
+
+                    # Extract and format content
+                    if isinstance(response, dict) and 'content' in response:
+                        return str(response['content'])
+                    elif isinstance(response, dict):
+                        return str(response.get('content', 'No response content'))
+                    else:
+                        return str(response)
+
+                except Exception as api_error:
+                    self.console.print(f"[red]API Error: {str(api_error)}[/red]")
+                    return f"Error: {str(api_error)}"
             except Exception as e:
                 self.console.print(f"[red]Error in completion:[/red] {str(e)}")
                 return f"Error: {str(e)}"
