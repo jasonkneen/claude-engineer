@@ -66,7 +66,7 @@ export function ChatLayout({
       // Optionally add error message to chat
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
-        content: 'An error occurred while sending your message. Please try again.',
+        content: 'An error occurred while processing your message. Please try again or check your connection.',
         role: 'assistant',
         timestamp: new Date().toISOString()
       }])
@@ -76,14 +76,28 @@ export function ChatLayout({
   }
 
   return (
-    <div className={cn("flex flex-col h-screen", className)} {...props}>
+    <div 
+      className={cn(
+        "flex flex-col h-screen transition-colors duration-150",
+        className
+      )} 
+      {...props}
+    >
       <div className="flex-1 overflow-hidden">
         <ChatContainer messages={messages} />
       </div>
       <ChatInput 
         onSubmit={handleSubmit} 
         isLoading={isLoading} 
+        className="transition-all duration-150"
       />
+      {isLoading && (
+        <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2">
+          <div className="bg-primary/10 dark:bg-primary/5 text-primary dark:text-primary/90 px-4 py-2 rounded-full text-sm font-medium animate-pulse">
+            Claude is thinking...
+          </div>
+        </div>
+      )}
     </div>
   )
 }
