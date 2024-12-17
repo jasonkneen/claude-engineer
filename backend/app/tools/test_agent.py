@@ -61,8 +61,8 @@ class TestAgentTool(AgentBaseTool):
         """Initialize test agent tool"""
         super().__init__(
             agent_id=agent_id,
-            role=AgentRole.TEST,
-            name=name or f"agent_test_{agent_id}"
+            name=name or f"agent_test_{agent_id}",
+            role=AgentRole.TEST
         )
         self.logger = logging.getLogger(__name__)
         self._executor = ThreadPoolExecutor(max_workers=4)
