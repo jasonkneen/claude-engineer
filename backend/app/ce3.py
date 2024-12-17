@@ -183,7 +183,7 @@ class Assistant:
             missing_module = error_str
         return missing_module
 
-    def _extract_tools_from_module(self, module, tools: List[Dict[str, Any]]) -> None:
+    async def _extract_tools_from_module(self, module, tools: List[Dict[str, Any]]) -> None:
         """
         Given a tool module, find and instantiate all tool classes (subclasses of BaseTool).
         Append them to the 'tools' list.
@@ -203,8 +203,10 @@ class Assistant:
                         }
                         role = role_map.get(name, AgentRole.CUSTOM)
                         tool_instance = obj(agent_id=agent_id, name=f"agent_{role.value}_{agent_id}")
+                        await tool_instance.initialize()
                     else:
                         tool_instance = obj()
+                        await tool_instance.initialize()
 
                     tools.append({
                         "name": tool_instance.name,
