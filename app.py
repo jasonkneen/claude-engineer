@@ -167,11 +167,56 @@ async def load_tools():
 
     return tools
 
-@app.route('/chat', methods=['POST'])
-async def chat():
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """Handle WebSocket connections for real-time chat."""
     try:
-        data = await request.get_json()
-        message = data.get('message', '')
+        await websocket.accept()
+        while True:
+            try:
+                # Receive and parse message
+                data = await websocket.receive_json()
+                message = data.get('message', '')
+                voice_enabled = data.get('voice', False)
+
+                # Process message
+                response = await assistant.chat(message)
+
+                # Generate voice response if requested
+                audio_data = None
+                if voice_enabled and response:
+                    try:
+                        voice_tool = next((tool for tool in assistant.tools if isinstance(tool, VoiceTool)), None)
+                        if voice_tool:
+                            audio_data = await voice_tool.text_to_speech(str(response))
+                    except Exception as e:
+                        logging.error(f"Voice generation error: {str(e)}")
+
+                # Send response
+                await websocket.send_json({
+                    'response': response,
+                    'audio': audio_data,
+                    'thinking': False,
+                    'timestamp': datetime.datetime.now().isoformat()
+                })
+
+            except WebSocketDisconnect:
+                logging.info("WebSocket client disconnected")
+                break
+            except Exception as e:
+                logging.error(f"Error processing message: {str(e)}")
+                await websocket.send_json({
+                    'error': str(e),
+                    'timestamp': datetime.datetime.now().isoformat()
+                })
+    except Exception as e:
+        logging.error(f"WebSocket connection error: {str(e)}")
+
+@app.post("/chat")
+async def chat(message: dict):
+    """Legacy HTTP endpoint for chat."""
+    try:
+        message_text = message.get('message', '')
         image_data = data.get('image')  # Get the base64 image data
 
         if image_data:
