@@ -88,6 +88,7 @@ class APIRouter(AbstractContextManager):
             API response as dict
         """
         try:
+            # Validate and prepare provider
             provider_enum = APIProvider(provider.lower())
             if config is None:
                 config = self._get_default_config(provider_enum)
@@ -103,31 +104,35 @@ class APIRouter(AbstractContextManager):
 
             # Get response from appropriate provider
             try:
+                # Make API request
                 if provider_enum == APIProvider.ANTHROPIC:
-                    response = await self._anthropic_request(formatted_messages, config)
+                    api_response = await self._anthropic_request(formatted_messages, config)
                 elif provider_enum == APIProvider.OPENAI:
-                    response = await self._openai_request(formatted_messages, config)
+                    api_response = await self._openai_request(formatted_messages, config)
                 else:
                     raise ValueError(f"Unsupported provider: {provider}")
 
-                # Ensure response is properly formatted
-                if isinstance(response, dict):
-                    return {
-                        "content": str(response.get("content", "")),
-                        "role": "assistant",
-                        "usage": {
-                            "input_tokens": int(response.get("usage", {}).get("input_tokens", 0)),
-                            "output_tokens": int(response.get("usage", {}).get("output_tokens", 0))
-                        },
-                        "model": str(response.get("model", "unknown"))
-                    }
+                # Format response
+                if isinstance(api_response, dict):
+                    content = str(api_response.get("content", ""))
+                    usage = api_response.get("usage", {})
+                    model = str(api_response.get("model", "unknown"))
                 else:
-                    return {
-                        "content": str(response),
-                        "role": "assistant",
-                        "usage": {"input_tokens": 0, "output_tokens": 0},
-                        "model": "unknown"
-                    }
+                    content = str(api_response)
+                    usage = {"input_tokens": 0, "output_tokens": 0}
+                    model = "unknown"
+
+                # Return formatted response
+                return {
+                    "content": content,
+                    "role": "assistant",
+                    "usage": {
+                        "input_tokens": int(usage.get("input_tokens", 0)),
+                        "output_tokens": int(usage.get("output_tokens", 0))
+                    },
+                    "model": model
+                }
+
             except Exception as provider_error:
                 self.logger.error(f"Provider error: {str(provider_error)}")
                 return {
@@ -139,7 +144,12 @@ class APIRouter(AbstractContextManager):
 
         except Exception as e:
             self.logger.error(f"Error routing request: {str(e)}")
-            raise
+            return {
+                "content": f"Error: {str(e)}",
+                "role": "assistant",
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+                "model": "unknown"
+            }
 
     def _get_default_config(self, provider: APIProvider) -> APIConfig:
         """Get default configuration for provider"""
