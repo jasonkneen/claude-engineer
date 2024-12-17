@@ -130,7 +130,7 @@ export function CreateAgent() {
           </TabsList>
 
           <TabsContent value="create">
-      <div className="space-y-6">
+            <div className="space-y-6">
         <div className="space-y-2">
           <label htmlFor="name" className="text-sm font-medium">
             Agent Name
@@ -166,16 +166,16 @@ export function CreateAgent() {
           recommendedTools={role ? AGENT_ROLES.find(r => r.value === role)?.recommendedTools || [] : []}
         />
       </div>
-      <div className="mt-6">
-        <Button 
-          className="w-full" 
-          onClick={handleCreateAgent} 
-          disabled={isCreating || !name || !role || selectedTools.length === 0}
-        >
-          {isCreating ? 'Creating...' : 'Create Agent'}
-        </Button>
-      </div>
-    </TabsContent>
+            <div className="mt-6">
+              <Button 
+                className="w-full" 
+                onClick={handleCreateAgent} 
+                disabled={isCreating || !name || !role || selectedTools.length === 0}
+              >
+                {isCreating ? 'Creating...' : 'Create Agent'}
+              </Button>
+            </div>
+          </TabsContent>
 
     <TabsContent value="existing">
       <div className="space-y-4">
