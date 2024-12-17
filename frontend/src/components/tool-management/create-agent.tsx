@@ -107,14 +107,14 @@ export function CreateAgent({ className, ...props }: CreateAgentProps) {
   }, []);
 
   useEffect(() => {
-    void fetchExistingAgents()
-  }, [])
+    void fetchExistingAgents();
+  }, [fetchExistingAgents]);
 
   useEffect(() => {
     if (description) {
-      void parseAgentDescription(description)
+      void parseAgentDescription(description);
     }
-  }, [description])
+  }, [description]);
 
   const parseAgentDescription = async (text: string): Promise<void> => {
     try {
@@ -165,18 +165,7 @@ export function CreateAgent({ className, ...props }: CreateAgentProps) {
     }
   }
 
-  const fetchExistingAgents = async (): Promise<void> => {
-    try {
-      const response = await fetch('http://localhost:8000/agents')
-      if (!response.ok) throw new Error('Failed to fetch agents')
-      const data = await response.json()
-      setExistingAgents(Array.isArray(data) ? data : [])
-    } catch (error) {
-      console.error('Error fetching agents:', error)
-      toast.error('Failed to load existing agents')
-      setExistingAgents([])
-    }
-  }
+
 
   const handleCreateAgent = useCallback(async () => {
     if (!description) {
