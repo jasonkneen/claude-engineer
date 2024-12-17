@@ -131,41 +131,41 @@ export function CreateAgent() {
 
           <TabsContent value="create">
             <div className="space-y-6">
-        <div className="space-y-2">
-          <label htmlFor="name" className="text-sm font-medium">
-            Agent Name
-          </label>
-          <Input
-            id="name"
-            placeholder="Enter agent name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-        
-        <div className="space-y-2">
-          <label className="text-sm font-medium">
-            Agent Role
-          </label>
-          <Select value={role} onValueChange={setRole}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select a role" />
-            </SelectTrigger>
-            <SelectContent>
-              {AGENT_ROLES.map((role) => (
-                <SelectItem key={role.value} value={role.value}>
-                  {role.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+              <div className="space-y-2">
+                <label htmlFor="name" className="text-sm font-medium">
+                  Agent Name
+                </label>
+                <Input
+                  id="name"
+                  placeholder="Enter agent name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  Agent Role
+                </label>
+                <Select value={role} onValueChange={setRole}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AGENT_ROLES.map((role) => (
+                      <SelectItem key={role.value} value={role.value}>
+                        {role.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-        <ToolList 
-          onToolSelect={setSelectedTools} 
-          recommendedTools={role ? AGENT_ROLES.find(r => r.value === role)?.recommendedTools || [] : []}
-        />
-      </div>
+              <ToolList 
+                onToolSelect={setSelectedTools} 
+                recommendedTools={role ? AGENT_ROLES.find(r => r.value === role)?.recommendedTools || [] : []}
+              />
+            </div>
             <div className="mt-6">
               <Button 
                 className="w-full" 
