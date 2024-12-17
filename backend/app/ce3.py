@@ -540,7 +540,7 @@ class Assistant:
             if user_input.lower() == 'reset':
                 return self.reset()
             elif user_input.lower() == 'refresh':
-                self.refresh_tools()
+                await self.refresh_tools()
                 return "Tools refreshed!"
             elif user_input.lower() == 'tools':
                 self.display_available_tools()
