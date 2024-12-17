@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 from typing import List, Dict, Any
@@ -25,7 +25,7 @@ app = FastAPI(title="Claude Engineer API")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,7 +50,14 @@ async def startup_event():
 async def websocket_endpoint(websocket: WebSocket):
     """Handle WebSocket connections for real-time chat."""
     try:
-        await websocket.accept()
+        # Add CORS headers for WebSocket
+        await websocket.accept(headers={
+            "Access-Control-Allow-Origin": "http://localhost:3000",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Credentials": "true",
+        })
+        
         client_id = str(id(websocket))
         connections[client_id] = websocket
         logger.info(f"New WebSocket connection established: {client_id}")
@@ -95,6 +102,18 @@ async def websocket_endpoint(websocket: WebSocket):
         if client_id in connections:
             del connections[client_id]
             logger.info(f"Cleaned up connection: {client_id}")
+
+@app.options("/ws")
+async def websocket_options(request: Request):
+    """Handle CORS preflight requests for WebSocket."""
+    return {
+        "headers": {
+            "Access-Control-Allow-Origin": "http://localhost:3000",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Credentials": "true",
+        }
+    }
 
 @app.get("/health")
 async def health_check():
