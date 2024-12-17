@@ -425,28 +425,28 @@ class Assistant:
         """
         try:
             # Route request through API router and await the response
+            # Format messages for API request
+            formatted_messages = []
+            for msg in self.conversation_history:
+                if isinstance(msg, dict):
+                    formatted_messages.append({
+                        "role": str(msg.get("role", "user")),
+                        "content": str(msg.get("content", ""))
+                    })
+
+            # Prepare API request config
+            config = APIConfig(
+                model=Config.MODEL,
+                max_tokens=min(
+                    Config.MAX_TOKENS,
+                    Config.MAX_CONVERSATION_TOKENS - self.total_tokens_used
+                ),
+                temperature=self.temperature,
+                tools=self.tools,
+                system=f"{SystemPrompts.DEFAULT}\n\n{SystemPrompts.TOOL_USAGE}"
+            )
+
             try:
-                # Format messages for API request
-                formatted_messages = []
-                for msg in self.conversation_history:
-                    if isinstance(msg, dict):
-                        formatted_messages.append({
-                            "role": str(msg.get("role", "user")),
-                            "content": str(msg.get("content", ""))
-                        })
-
-                # Prepare API request config
-                config = APIConfig(
-                    model=Config.MODEL,
-                    max_tokens=min(
-                        Config.MAX_TOKENS,
-                        Config.MAX_CONVERSATION_TOKENS - self.total_tokens_used
-                    ),
-                    temperature=self.temperature,
-                    tools=self.tools,
-                    system=f"{SystemPrompts.DEFAULT}\n\n{SystemPrompts.TOOL_USAGE}"
-                )
-
                 # Make API request and await response
                 response = await self.api_router.route_request(
                     provider=Config.DEFAULT_PROVIDER,
@@ -473,13 +473,10 @@ class Assistant:
                 
                 return str(response) if response else "No response"
 
-            except Exception as api_error:
-                error_msg = f"API Error: {str(api_error)}"
+            except Exception as e:
+                error_msg = f"API Error: {str(e)}"
                 self.console.print(f"[red]{error_msg}[/red]")
                 return error_msg
-            except Exception as e:
-                self.console.print(f"[red]Error in completion:[/red] {str(e)}")
-                return f"Error: {str(e)}"
 
             # Update token usage based on response usage
             if hasattr(response, 'usage') and response.usage:
