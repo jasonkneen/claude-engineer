@@ -10,9 +10,9 @@ import os
 import logging
 import datetime
 from enum import Enum
-from tools.voice_tool import VoiceTool
-from tools.agent_manager import AgentManagerTool
-from tools.context_manager import ContextManagerTool
+from app.tools.voice_tool import VoiceTool
+from app.tools.agent_manager import AgentManagerTool
+from app.tools.context_manager import ContextManagerTool
 
 class ToolSchema(BaseModel):
     name: str
