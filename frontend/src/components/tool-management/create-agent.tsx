@@ -128,6 +128,9 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
         await navigator.mediaDevices.getUserMedia({ audio: true })
         // Initialize voice recognition
         const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition
+        if (!SpeechRecognition) {
+          throw new Error('Speech recognition is not supported in this browser')
+        }
         const recognition = new SpeechRecognition()
         recognition.continuous = true
         recognition.onresult = (event: SpeechRecognitionEvent) => {
@@ -172,6 +175,19 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
     try {
       // First parse the description
       const parseResponse = await fetch('http://localhost:8000/parse-agent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ description }),
+      }).catch(error => {
+        throw new Error(`Network error: ${error.message}`)
+      })
+
+      if (!parseResponse.ok) {
+        const errorData = await parseResponse.json().catch(() => ({}))
+        throw new Error(errorData.detail || 'Failed to parse agent description')
+      }
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -275,13 +291,27 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
               )}
             </div>
             <div className="mt-6">
-              <Button 
-                className="w-full" 
-                onClick={handleCreateAgent} 
-                disabled={isCreating || !description}
-              >
-                {isCreating ? 'Creating...' : 'Create Agent'}
-              </Button>
+              <div className="space-y-4">
+                {parsedAgent.name && (
+                  <div className="text-sm text-muted-foreground">
+                    Parsed agent details will appear here...
+                  </div>
+                )}
+                <Button 
+                  className="w-full" 
+                  onClick={handleCreateAgent} 
+                  disabled={isCreating || !description}
+                >
+                  {isCreating ? (
+                    <div className="flex items-center gap-2">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      Creating...
+                    </div>
+                  ) : (
+                    'Create Agent'
+                  )}
+                </Button>
+              </div>
             </div>
           </TabsContent>
 
