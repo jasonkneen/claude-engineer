@@ -34,7 +34,9 @@ const TOOL_CATEGORIES: ToolCategories = {
   'other': { label: 'Other Tools', description: 'Additional utility tools' }
 } as const
 
-function getToolCategory(toolName: string): string {
+type CategoryKey = keyof typeof TOOL_CATEGORIES;
+
+function getToolCategory(toolName: string): CategoryKey {
   if (toolName.includes('agent')) return 'agent'
   if (toolName.includes('context')) return 'context'
   if (toolName.includes('file')) return 'file'
