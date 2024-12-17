@@ -15,16 +15,16 @@ import sys
 import logging
 import asyncio
 
-from config import Config
-from tools.base import BaseTool
-from api_router import APIRouter, APIConfig
-from tools.agent_manager import AgentManagerTool
-from tools.test_agent import TestAgentTool
-from tools.context_manager import ContextManagerTool
-from tools.agent_base import AgentBaseTool, AgentRole
+from .config import Config
+from .tools.base import BaseTool
+from .api_router import APIRouter, APIConfig
+from .tools.agent_manager import AgentManagerTool
+from .tools.test_agent import TestAgentTool
+from .tools.context_manager import ContextManagerTool
+from .tools.agent_base import AgentBaseTool, AgentRole
 from prompt_toolkit import prompt
 from prompt_toolkit.styles import Style
-from prompts.system_prompts import SystemPrompts
+from .prompts.system_prompts import SystemPrompts
 
 # Configure logging to only show ERROR level and above
 logging.basicConfig(
@@ -126,7 +126,7 @@ class Assistant:
             ]
             for tool_name in core_tools:
                 try:
-                    module = importlib.import_module(f'tools.{tool_name}')
+                    module = importlib.import_module(f'.tools.{tool_name}', package=__package__)
                     self._extract_tools_from_module(module, tools)
                 except ImportError as e:
                     self.console.print(f"[red]Failed to load core tool {tool_name}: {str(e)}[/red]")
@@ -327,7 +327,7 @@ class Assistant:
                 else:
                     tool_result = f"Agent tool not initialized: {tool_name}"
             else:
-                module = importlib.import_module(f'tools.{tool_name}')
+                module = importlib.import_module(f'.tools.{tool_name}', package=__package__)
                 tool_instance = await self._find_tool_instance_in_module(module, tool_name)
 
                 if not tool_instance:
