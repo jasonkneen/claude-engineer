@@ -7,10 +7,16 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 import json
 import datetime
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from contextlib import AbstractContextManager
 from typing import Dict, Any, Optional, List, Set, Tuple
+from fastapi import WebSocket, WebSocketDisconnect
+from .tools.agent_manager import AgentManagerTool
+from .tools.context_manager import ContextManagerTool
+from .tools.voice_tool import VoiceTool
 
 def get_tools_for_role(role: str) -> List[str]:
     """Get recommended tools for a given role"""
