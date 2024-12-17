@@ -59,16 +59,19 @@ async def chat(request: Request):
             # Get response from assistant
             response = await assistant.chat(content)
             
-            # Create a simple dict that we know is JSON serializable
-            response_dict = {
+            # Create response data with primitive types
+            timestamp = datetime.datetime.now()
+            response_data = {
                 "type": "message",
                 "content": str(response),
                 "role": "assistant",
-                "timestamp": datetime.datetime.now().isoformat(),
-                "id": str(datetime.datetime.now().timestamp())
+                "timestamp": timestamp.isoformat(),
+                "id": str(int(timestamp.timestamp()))
             }
             
-            return response_dict
+            # Convert to JSON-compatible format
+            json_compatible = jsonable_encoder(response_data)
+            return JSONResponse(content=json_compatible)
         except Exception as chat_error:
             logger.error(f"Chat error: {str(chat_error)}")
             raise HTTPException(status_code=500, detail=str(chat_error))
