@@ -64,10 +64,7 @@ class Assistant:
         
         self.api_router = APIRouter()
         self.tools = await self._load_tools()
-        self.agent_manager = AgentManagerTool(
-            agent_id="manager",
-            name="agent_orchestrator_manager"
-        )
+        self.agent_manager = AgentManagerTool(name="agent_orchestrator_manager")
         await self.agent_manager.initialize()
         return self
 
