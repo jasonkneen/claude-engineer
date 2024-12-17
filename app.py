@@ -22,6 +22,14 @@ class AgentParseResponse(BaseModel):
     role: str
     tools: List[str]
 
+class AgentParseRequest(BaseModel):
+    description: str
+
+class AgentParseResponse(BaseModel):
+    name: str
+    role: str
+    tools: List[str]
+
 class AgentConfig(BaseModel):
     enabled: bool
     agents: Optional[Dict[str, Any]] = None
@@ -235,6 +243,30 @@ async def websocket_endpoint(websocket: WebSocket):
                 })
     except Exception as e:
         logging.error(f"WebSocket connection error: {str(e)}")
+
+@app.post("/parse-agent", response_model=AgentParseResponse)
+async def parse_agent(request: AgentParseRequest):
+    """Parse natural language description into agent properties."""
+    try:
+        if not app.assistant:
+            raise HTTPException(status_code=500, detail="Assistant not initialized")
+        
+        parsed = await app.assistant.api_router.parse_agent(request.description)
+        if not parsed.get("name") or not parsed.get("role"):
+            raise HTTPException(status_code=400, detail="Failed to parse agent description")
+        
+        return AgentParseResponse(
+            name=parsed["name"],
+            role=parsed["role"],
+            tools=parsed.get("tools", [])
+        )
+        
+    except Exception as e:
+        logging.error(f"Error parsing agent description: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error parsing agent description: {str(e)}"
+        )
 
 @app.post("/parse-agent", response_model=AgentParseResponse)
 async def parse_agent(request: AgentParseRequest):
