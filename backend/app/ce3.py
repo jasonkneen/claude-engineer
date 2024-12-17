@@ -583,11 +583,13 @@ class Assistant:
             return "Test Mode: This is a mock response. The application is working correctly, but API calls are disabled."
 
         try:
-            # Format user message for API
-            self.conversation_history = [{
+            # Initialize conversation with user message
+            self.conversation_history = []
+            user_message = {
                 "role": "user",
-                "content": user_input
-            }]
+                "content": str(user_input)
+            }
+            self.conversation_history.append(user_message)
 
             try:
                 # Get completion with proper error handling
@@ -599,11 +601,12 @@ class Assistant:
                     response = await self._get_completion()
 
                 # Format assistant response
-                response_text = response if isinstance(response, str) else str(response)
-                self.conversation_history.append({
+                response_text = str(response) if response else "No response"
+                assistant_message = {
                     "role": "assistant",
                     "content": response_text
-                })
+                }
+                self.conversation_history.append(assistant_message)
 
                 return response_text
             except Exception as e:
