@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 from typing import List, Dict, Any
@@ -6,6 +6,11 @@ import json
 import sys
 import os
 import logging
+import datetime
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
