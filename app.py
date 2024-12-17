@@ -483,35 +483,58 @@ async def transcribe(audio_file: UploadFile = File(...)):
         if not assistant or not assistant.tools:
             raise HTTPException(status_code=500, detail="Assistant not initialized")
 
-        files = await request.files
-        if 'audio' not in files:
-            return jsonify({'error': 'No audio file provided'}), 400
-
-        audio_file = files['audio']
         if not audio_file.filename:
-            return jsonify({'error': 'Invalid audio file'}), 400
+            raise HTTPException(status_code=400, detail="Invalid audio file")
 
-        temp_path = os.path.join(os.path.dirname(__file__), 'static', 'uploads', f'temp_{int(time.time())}.wav')
+        # Create temp file path
+        temp_path = os.path.join('static', 'uploads', f'temp_{int(time.time())}.wav')
         os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-        await audio_file.save(temp_path)
-
-        voice_tool = next((tool for tool in app.assistant.tools if hasattr(tool, 'role') and getattr(tool, 'role', None) == VoiceRole.VOICE_CONTROL), None)
-        if not voice_tool:
-            os.remove(temp_path)
-            return jsonify({'error': 'Voice tool not available'}), 500
 
         try:
-            text = await voice_tool.transcribe(temp_path)
-            os.remove(temp_path)
-            return jsonify({'text': text})
-        except Exception as e:
-            os.remove(temp_path)
-            logging.error(f"Error transcribing audio: {str(e)}")
-            return jsonify({'error': f'Transcription failed: {str(e)}'}), 500
+            # Save uploaded file
+            contents = await audio_file.read()
+            with open(temp_path, "wb") as f:
+                f.write(contents)
 
-    except Exception as e:
-        logging.error(f"Error in transcribe endpoint: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+            # Get voice tool
+            voice_tool = next(
+                (tool for tool in assistant.tools 
+                 if hasattr(tool, 'role') and getattr(tool, 'role', None) == VoiceRole.VOICE_CONTROL),
+                None
+            )
+
+            if not voice_tool:
+                raise HTTPException(status_code=500, detail="Voice tool not available")
+
+            try:
+                # Transcribe audio
+                text = await voice_tool.transcribe(temp_path)
+                return TranscriptionResponse(text=text)
+
+            except Exception as e:
+                logging.error(f"Error transcribing audio: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Transcription failed: {str(e)}"
+                )
+
+            finally:
+                # Clean up temp file
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+
+        except HTTPException:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise
+        except Exception as e:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            logging.error(f"Error in transcribe endpoint: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error processing audio file: {str(e)}"
+            )
 
 @app.route('/create-flow', methods=['POST'])
 async def create_flow():
