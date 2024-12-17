@@ -91,37 +91,41 @@ class APIRouter(AbstractContextManager):
             if config is None:
                 config = self._get_default_config(provider_enum)
 
+            # Format messages for API request
+            formatted_messages = []
+            for msg in messages:
+                if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
+                    formatted_messages.append({
+                        'role': msg['role'],
+                        'content': msg['content']
+                    })
+
             # Get response from appropriate provider
             if provider_enum == APIProvider.ANTHROPIC:
-                response = await self._anthropic_request(messages, config)
+                response = await self._anthropic_request(formatted_messages, config)
             elif provider_enum == APIProvider.OPENAI:
-                response = await self._openai_request(messages, config)
+                response = await self._openai_request(formatted_messages, config)
             else:
                 raise ValueError(f"Unsupported provider: {provider}")
 
-            # Convert response to a simple dict format
-            response_dict = {
-                "content": "",
-                "role": "assistant",
-                "usage": {"input_tokens": 0, "output_tokens": 0},
-                "model": "unknown"
-            }
-
-            # Update with actual values if available
+            # Ensure response is properly formatted
             if isinstance(response, dict):
-                response_dict.update({
+                return {
                     "content": str(response.get("content", "")),
-                    "role": str(response.get("role", "assistant")),
+                    "role": "assistant",
                     "usage": {
                         "input_tokens": int(response.get("usage", {}).get("input_tokens", 0)),
                         "output_tokens": int(response.get("usage", {}).get("output_tokens", 0))
                     },
                     "model": str(response.get("model", "unknown"))
-                })
+                }
             else:
-                response_dict["content"] = str(response)
-
-            return response_dict
+                return {
+                    "content": str(response),
+                    "role": "assistant",
+                    "usage": {"input_tokens": 0, "output_tokens": 0},
+                    "model": "unknown"
+                }
 
         except Exception as e:
             self.logger.error(f"Error routing request: {str(e)}")
