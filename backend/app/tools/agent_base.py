@@ -39,11 +39,11 @@ class AgentState:
         return cls(**data)
 
 class AgentBaseTool(BaseTool):
-    def __init__(self, agent_id: str, role: AgentRole, name: Optional[str] = None):
-        """Initialize agent tool with ID, role and optional name."""
-        super().__init__(name or f"agent_{role.value}_{agent_id}")
+    def __init__(self, agent_id: str, name: Optional[str] = None, role: Optional[AgentRole] = None):
+        """Initialize agent tool with ID and optional name."""
+        super().__init__(name)
         self._agent_id = agent_id
-        self._role = role
+        self._role = role or AgentRole.CUSTOM
         self._description = "Base agent tool for handling agent operations"
         self._lock = asyncio.Lock()
         self.logger = logging.getLogger(__name__)
