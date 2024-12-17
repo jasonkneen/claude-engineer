@@ -302,32 +302,52 @@ async def upload_file(file: UploadFile = File(...)):
         if not file:
             raise HTTPException(status_code=400, detail="No file uploaded")
     
-        file = (await request.files)['file']
         if file.filename == '':
-            return jsonify({'error': 'No selected file'}), 400
+            raise HTTPException(status_code=400, detail="No selected file")
     
-        if file and file.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            await file.save(filepath)
-    
+        if not file.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+            raise HTTPException(status_code=400, detail="Invalid file type")
+
+        # Create temp file path
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        
+        try:
+            # Save uploaded file
+            contents = await file.read()
+            with open(filepath, "wb") as f:
+                f.write(contents)
+            
+            # Get media type
             media_type = file.content_type or 'image/jpeg'
-    
+            
+            # Read and encode file
             with open(filepath, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
-    
+            
+            # Clean up
             os.remove(filepath)
-    
-            return jsonify({
-                'success': True,
-                'image_data': encoded_string,
-                'media_type': media_type
-            })
-    
-        return jsonify({'error': 'Invalid file type'}), 400
+            
+            return FileUploadResponse(
+                success=True,
+                image_data=encoded_string,
+                media_type=media_type
+            )
+            
+        except Exception as e:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error processing file: {str(e)}"
+            )
+            
     except Exception as e:
         logging.error(f"Exception in upload_file route: {str(e)}")
-        return jsonify({'error': f"Error: {str(e)}"}), 500
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error uploading file: {str(e)}"
+        )
 
 @app.route('/reset', methods=['POST'])
 async def reset():
