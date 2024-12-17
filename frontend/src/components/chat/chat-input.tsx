@@ -8,6 +8,7 @@ import { SendIcon } from 'lucide-react'
 interface ChatInputProps {
   onSubmit: (message: string) => void
   isLoading?: boolean
+  disabled?: boolean
   className?: string
 }
 
