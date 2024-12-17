@@ -226,30 +226,45 @@ class APIRouter(AbstractContextManager):
             for msg in messages:
                 if isinstance(msg, dict):
                     formatted_messages.append({
-                        "role": msg.get("role", "user"),
+                        "role": str(msg.get("role", "user")),
                         "content": str(msg.get("content", ""))
                     })
 
-            # Make API request
-            response = await self.openai_client.chat.completions.create(
-                model=config.model,
-                messages=formatted_messages,
-                max_tokens=config.max_tokens,
-                temperature=config.temperature
-            )
-
-            # Extract content and format response
-            content = response.choices[0].message.content if response.choices else ""
-
-            return {
-                "content": str(content),
-                "usage": {
-                    "input_tokens": int(getattr(response.usage, "prompt_tokens", 0)),
-                    "output_tokens": int(getattr(response.usage, "completion_tokens", 0))
-                },
-                "model": str(response.model),
-                "role": "assistant"
+            # Create API request parameters
+            request_params = {
+                "model": config.model,
+                "messages": formatted_messages,
+                "max_tokens": config.max_tokens,
+                "temperature": config.temperature
             }
+
+            # Make API request
+            try:
+                response = await self.openai_client.chat.completions.create(**request_params)
+
+                # Extract content from response
+                content = ""
+                if hasattr(response, 'choices') and response.choices:
+                    content = response.choices[0].message.content
+
+                # Format response
+                return {
+                    "content": str(content),
+                    "usage": {
+                        "input_tokens": int(getattr(response.usage, "prompt_tokens", 0)),
+                        "output_tokens": int(getattr(response.usage, "completion_tokens", 0))
+                    },
+                    "model": str(getattr(response, "model", config.model)),
+                    "role": "assistant"
+                }
+            except Exception as api_error:
+                self.logger.error(f"OpenAI API error: {str(api_error)}")
+                return {
+                    "content": f"API Error: {str(api_error)}",
+                    "usage": {"input_tokens": 0, "output_tokens": 0},
+                    "model": config.model,
+                    "role": "assistant"
+                }
         except Exception as e:
             self.logger.error(f"OpenAI API error: {str(e)}")
             raise
