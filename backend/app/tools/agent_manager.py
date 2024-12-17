@@ -67,7 +67,6 @@ class AgentManagerTool(BaseTool):
     async def initialize(self):
         """Initialize the API router"""
         self.api_router = APIRouter()
-        await self.api_router.initialize()
 
     async def execute(self, **kwargs) -> str:
         """Execute agent management operations.
