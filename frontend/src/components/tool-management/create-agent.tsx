@@ -116,7 +116,7 @@ export function CreateAgent({ className, ...props }: CreateAgentProps) {
     }
   }, [description]);
 
-  const parseAgentDescription = async (text: string): Promise<void> => {
+  const parseAgentDescription = useCallback(async (text: string): Promise<void> => {
     try {
       const response = await fetch('http://localhost:8000/parse-agent', {
         method: 'POST',
@@ -128,12 +128,12 @@ export function CreateAgent({ className, ...props }: CreateAgentProps) {
 
       if (!response.ok) throw new Error('Failed to parse agent description')
       const data = await response.json()
-      setParsedAgent(data)
+      setParsedAgent(data);
     } catch (error) {
-      console.error('Error parsing agent description:', error)
-      toast.error('Failed to parse agent description')
+      console.error('Error parsing agent description:', error);
+      toast.error('Failed to parse agent description');
     }
-  }
+  }, []);
 
   const toggleRecording = async () => {
     if (!isRecording) {
@@ -225,7 +225,7 @@ export function CreateAgent({ className, ...props }: CreateAgentProps) {
     } finally {
       setIsCreating(false);
     }
-  };
+  }, [description, fetchExistingAgents]);
 
   return (
     <Card className={cn("w-full max-w-2xl mx-auto", className)} {...props}>
