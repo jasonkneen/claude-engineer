@@ -194,7 +194,7 @@ class Assistant:
                             'AgentManagerTool': AgentRole.ORCHESTRATOR
                         }
                         role = role_map.get(name, AgentRole.CUSTOM)
-                        tool_instance = obj(agent_id=agent_id, role=role)
+                        tool_instance = obj(agent_id=agent_id, name=f"agent_{role.value}_{agent_id}")
                     else:
                         tool_instance = obj()
 
