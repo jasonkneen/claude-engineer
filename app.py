@@ -472,12 +472,16 @@ async def speak(request: SpeechRequest):
             detail=f"Error processing speech request: {str(e)}"
         )
 
-@app.route('/transcribe', methods=['POST'])
-async def transcribe():
+class TranscriptionResponse(BaseModel):
+    text: str
+    error: Optional[str] = None
+
+@app.post('/transcribe', response_model=TranscriptionResponse)
+async def transcribe(audio_file: UploadFile = File(...)):
     """Handle speech-to-text requests."""
     try:
-        if not app.assistant or not app.assistant.tools:
-            return jsonify({'error': 'Assistant not initialized'}), 500
+        if not assistant or not assistant.tools:
+            raise HTTPException(status_code=500, detail="Assistant not initialized")
 
         files = await request.files
         if 'audio' not in files:
