@@ -29,7 +29,8 @@ connections: Dict[str, WebSocket] = {}
 async def startup_event():
     """Initialize the assistant on startup."""
     global assistant
-    assistant = await Assistant.create()
+    assistant = Assistant()
+    await assistant.initialize()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
