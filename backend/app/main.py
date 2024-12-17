@@ -48,6 +48,7 @@ async def startup_event():
 async def chat(request: Request):
     """Handle chat messages."""
     try:
+        # Parse request data
         data = await request.json()
         content = data.get('content')
         
@@ -55,6 +56,7 @@ async def chat(request: Request):
             raise HTTPException(status_code=400, detail="Message content is required")
             
         logger.info(f"Processing chat message: {content[:100]}...")  # Log first 100 chars
+        
         try:
             # Get response from assistant
             response = await assistant.chat(content)
@@ -63,15 +65,27 @@ async def chat(request: Request):
             timestamp = datetime.datetime.now()
             response_data = {
                 "type": "message",
-                "content": str(response),
+                "content": str(response) if response else "",
                 "role": "assistant",
                 "timestamp": timestamp.isoformat(),
                 "id": str(int(timestamp.timestamp()))
             }
             
-            # Convert to JSON-compatible format
-            json_compatible = jsonable_encoder(response_data)
-            return JSONResponse(content=json_compatible)
+            # Return response directly - FastAPI will handle JSON serialization
+            return response_data
+            
+        except Exception as chat_error:
+            logger.error(f"Chat error: {str(chat_error)}")
+            error_response = {
+                "type": "error",
+                "content": str(chat_error),
+                "role": "assistant",
+                "timestamp": datetime.datetime.now().isoformat()
+            }
+            return JSONResponse(
+                status_code=500,
+                content=error_response
+            )
         except Exception as chat_error:
             logger.error(f"Chat error: {str(chat_error)}")
             raise HTTPException(status_code=500, detail=str(chat_error))
