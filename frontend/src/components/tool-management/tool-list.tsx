@@ -21,7 +21,7 @@ interface Tool {
   name: string
   description: string
   input_schema: Record<string, any>
-  category?: string
+  category?: CategoryKey
 }
 
 const TOOL_CATEGORIES: ToolCategories = {
