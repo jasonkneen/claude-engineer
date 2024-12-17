@@ -387,35 +387,41 @@ async def agent_status():
         if not assistant or not assistant.tools:
             raise HTTPException(status_code=500, detail="Assistant not initialized")
 
-        status = {
-            'agents': [],
-            'voice_enabled': False
-        }
+        agents = []
+        voice_enabled = False
 
-        for tool in app.assistant.tools:
+        for tool in assistant.tools:
             if hasattr(tool, 'get_state'):
                 try:
                     tool_state = await tool.get_state()
-                    agent_status = {
-                        'id': getattr(tool, 'agent_id', tool.__class__.__name__),
-                        'name': getattr(tool, 'name', tool.__class__.__name__),
-                        'role': getattr(tool, 'role', None).value if hasattr(tool, 'role') and getattr(tool, 'role', None) else None,
-                        'status': 'Active' if not tool_state.get('is_paused', False) else 'Paused',
-                        'current_task': tool_state.get('current_task'),
-                        'progress': tool_state.get('progress'),
-                        'task_history': tool_state.get('task_history', [])
-                    }
-                    status['agents'].append(agent_status)
+                    agent_state = AgentState(
+                        id=getattr(tool, 'agent_id', tool.__class__.__name__),
+                        name=getattr(tool, 'name', tool.__class__.__name__),
+                        role=getattr(tool, 'role', None).value if hasattr(tool, 'role') and getattr(tool, 'role', None) else None,
+                        status='Active' if not tool_state.get('is_paused', False) else 'Paused',
+                        current_task=tool_state.get('current_task'),
+                        progress=tool_state.get('progress'),
+                        task_history=tool_state.get('task_history', [])
+                    )
+                    agents.append(agent_state)
                 except Exception as e:
                     logging.error(f"Error getting state for tool {tool.__class__.__name__}: {str(e)}")
+                    continue
 
             if hasattr(tool, 'role') and getattr(tool, 'role', None) == VoiceRole.VOICE_CONTROL:
-                status['voice_enabled'] = True
+                voice_enabled = True
 
-        return jsonify(status)
+        return AgentStatusResponse(
+            agents=agents,
+            voice_enabled=voice_enabled
+        )
+
     except Exception as e:
         logging.error(f"Error in agent-status endpoint: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error getting agent status: {str(e)}"
+        )
 
 @app.route('/speak', methods=['POST'])
 async def speak():
