@@ -1,14 +1,31 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import json
 import sys
 import os
 import logging
 import datetime
+from enum import Enum
+
+class ToolSchema(BaseModel):
+    name: str
+    description: str
+    input_schema: Dict[str, Any]
+
+class AgentRole(str, Enum):
+    TEST = "test"
+    CONTEXT = "context"
+    ORCHESTRATOR = "orchestrator"
+    CUSTOM = "custom"
+
+class AgentCreate(BaseModel):
+    name: str
+    role: AgentRole
+    tools: List[str]
 
 class ChatResponse(BaseModel):
     type: str = "message"
@@ -105,6 +122,64 @@ async def chat(request: Request):
         return JSONResponse(
             status_code=500,
             content=jsonable_encoder(error_data)
+        )
+
+@app.get("/tools")
+async def list_tools():
+    """List all available tools."""
+    try:
+        tools = assistant._load_tools()
+        return JSONResponse(content=jsonable_encoder(tools))
+    except Exception as e:
+        logger.error(f"Error listing tools: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
+@app.post("/agents")
+async def create_agent(agent: AgentCreate):
+    """Create a new agent with specified tools."""
+    try:
+        # Initialize agent manager if not already done
+        if not hasattr(assistant, 'agent_manager'):
+            from tools.agent_manager import AgentManagerTool
+            assistant.agent_manager = AgentManagerTool()
+
+        # Create agent with specified tools
+        agent_id = f"{agent.name.lower()}_{datetime.datetime.now().timestamp()}"
+        result = await assistant.agent_manager.execute(
+            command="create",
+            agent_id=agent_id,
+            role=agent.role,
+            tools=agent.tools
+        )
+        
+        return JSONResponse(content=jsonable_encoder({
+            "agent_id": agent_id,
+            "result": result
+        }))
+    except Exception as e:
+        logger.error(f"Error creating agent: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
+@app.get("/agents")
+async def list_agents():
+    """List all available agents."""
+    try:
+        if not hasattr(assistant, 'agent_manager'):
+            return JSONResponse(content=[])
+            
+        result = await assistant.agent_manager.execute(command="list")
+        return JSONResponse(content=jsonable_encoder(result))
+    except Exception as e:
+        logger.error(f"Error listing agents: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
         )
 
 @app.get("/health")
