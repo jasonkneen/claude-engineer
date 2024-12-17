@@ -45,38 +45,52 @@ async def startup_event():
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Handle WebSocket connections for real-time chat."""
-    await websocket.accept()
-    client_id = str(id(websocket))
-    connections[client_id] = websocket
-    
     try:
+        await websocket.accept()
+        client_id = str(id(websocket))
+        connections[client_id] = websocket
+        logger.info(f"New WebSocket connection established: {client_id}")
+        
         while True:
-            message = await websocket.receive_text()
-            
-            # Parse the message
             try:
-                data = json.loads(message)
-                content = data.get('content', '')
-            except json.JSONDecodeError:
-                content = message
+                message = await websocket.receive_text()
+                logger.debug(f"Received message from {client_id}: {message}")
+                
+                # Parse the message
+                try:
+                    data = json.loads(message)
+                    content = data.get('content', '')
+                except json.JSONDecodeError:
+                    content = message
 
-            # Process with Claude Engineer
-            response = await assistant.chat(content)
+                # Process with Claude Engineer
+                response = await assistant.chat(content)
 
-            # Send response back
-            await websocket.send_json({
-                "type": "message",
-                "content": response,
-                "role": "assistant",
-                "timestamp": None  # You can add timestamp if needed
-            })
+                # Send response back
+                await websocket.send_json({
+                    "type": "message",
+                    "content": response,
+                    "role": "assistant",
+                    "timestamp": datetime.datetime.now().isoformat()
+                })
+                logger.debug(f"Sent response to {client_id}")
+
+            except WebSocketDisconnect:
+                logger.info(f"WebSocket disconnected: {client_id}")
+                break
+            except Exception as e:
+                logger.error(f"Error processing message: {str(e)}")
+                await websocket.send_json({
+                    "type": "error",
+                    "content": "An error occurred while processing your message"
+                })
 
     except Exception as e:
-        logger.error(f"Error handling WebSocket: {str(e)}")
+        logger.error(f"Error handling WebSocket connection: {str(e)}")
     finally:
-        # Clean up connection
         if client_id in connections:
             del connections[client_id]
+            logger.info(f"Cleaned up connection: {client_id}")
 
 @app.get("/health")
 async def health_check():
