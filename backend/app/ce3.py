@@ -371,9 +371,11 @@ class Assistant:
                             'AgentManagerTool': AgentRole.ORCHESTRATOR
                         }
                         role = role_map.get(name, AgentRole.CUSTOM)
-                        candidate_tool = await obj(agent_id=agent_id, role=role)
+                        candidate_tool = obj(agent_id=agent_id, name=f"agent_{role.value}_{agent_id}")
+                        await candidate_tool.initialize()
                     else:
-                        candidate_tool = await obj()
+                        candidate_tool = obj()
+                        await candidate_tool.initialize()
 
                     if candidate_tool.name == tool_name:
                         return candidate_tool
