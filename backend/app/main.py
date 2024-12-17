@@ -115,10 +115,6 @@ async def chat(request: Request):
             status_code=500,
             content=jsonable_encoder(error_data)
         )
-        error_response = ChatResponse(
-            type="error",
-            content=str(e),
-            timestamp=datetime.datetime.now().isoformat(),
             id=str(int(datetime.datetime.now().timestamp()))
         )
         return JSONResponse(
