@@ -16,13 +16,13 @@ interface Tool {
 }
 
 const TOOL_CATEGORIES = {
-  'agent': 'Agent Management',
-  'context': 'Context Management',
-  'file': 'File Operations',
-  'web': 'Web Tools',
-  'voice': 'Voice & Audio',
-  'test': 'Testing',
-  'other': 'Other Tools'
+  'agent': { label: 'Agent Management', description: 'Tools for managing and controlling agents' },
+  'context': { label: 'Context Management', description: 'Tools for handling context and state' },
+  'file': { label: 'File Operations', description: 'Tools for file system operations' },
+  'web': { label: 'Web Tools', description: 'Tools for web interactions and scraping' },
+  'voice': { label: 'Voice & Audio', description: 'Tools for voice and audio processing' },
+  'test': { label: 'Testing', description: 'Tools for testing and validation' },
+  'other': { label: 'Other Tools', description: 'Additional utility tools' }
 }
 
 function getToolCategory(toolName: string): string {
