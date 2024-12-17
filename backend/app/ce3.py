@@ -593,21 +593,24 @@ class Assistant:
 
             try:
                 # Get completion with proper error handling
+                response_text = None
                 if self.thinking_enabled:
                     with Live(Spinner('dots', text='Thinking...', style="cyan"),
                             refresh_per_second=10, transient=True):
-                        response = await self._get_completion()
+                        completion = await self._get_completion()
+                        response_text = str(completion) if completion else "No response"
                 else:
-                    response = await self._get_completion()
+                    completion = await self._get_completion()
+                    response_text = str(completion) if completion else "No response"
 
                 # Format assistant response
-                response_text = str(response) if response else "No response"
                 assistant_message = {
                     "role": "assistant",
                     "content": response_text
                 }
                 self.conversation_history.append(assistant_message)
 
+                # Return the text response
                 return response_text
             except Exception as e:
                 error_msg = f"Error in chat completion: {str(e)}"
