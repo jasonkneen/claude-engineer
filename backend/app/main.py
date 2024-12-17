@@ -88,12 +88,19 @@ async def chat(request: ChatRequest):
                 status_code=500,
                 content=jsonable_encoder(error_response)
             )
-        except Exception as chat_error:
-            logger.error(f"Chat error: {str(chat_error)}")
-            raise HTTPException(status_code=500, detail=str(chat_error))
+            
     except Exception as e:
         logger.error(f"Error processing chat message: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_response = ChatResponse(
+            type="error",
+            content=str(e),
+            timestamp=datetime.datetime.now().isoformat(),
+            id=str(int(datetime.datetime.now().timestamp()))
+        )
+        return JSONResponse(
+            status_code=500,
+            content=jsonable_encoder(error_response)
+        )
 
 @app.get("/health")
 async def health_check():
