@@ -83,7 +83,8 @@ async def chat(request: Request):
             }
             
             # Convert to JSON-compatible format and return
-            return response_data
+            json_compatible = jsonable_encoder(response_data)
+            return JSONResponse(content=json_compatible, status_code=200)
             
         except Exception as chat_error:
             logger.error(f"Chat error: {str(chat_error)}")
