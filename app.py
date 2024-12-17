@@ -275,21 +275,19 @@ async def chat(message: ChatMessage):
                     if tool_name:
                         break
 
-        return jsonify({
-            'response': response,
-            'thinking': False,
-            'tool_name': tool_name,
-            'token_usage': token_usage
-        })
+        return ChatResponse(
+            response=str(response),
+            thinking=False,
+            tool_name=tool_name,
+            token_usage=token_usage
+        )
 
     except Exception as e:
         logging.error(f"Exception in chat route: {str(e)}")
-        return jsonify({
-            'response': f"Error: {str(e)}",
-            'thinking': False,
-            'tool_name': None,
-            'token_usage': None
-        }), 200
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing chat request: {str(e)}"
+        )
 
 @app.route('/upload', methods=['POST'])
 async def upload_file():
