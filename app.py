@@ -438,28 +438,39 @@ async def speak(request: SpeechRequest):
         if not assistant or not assistant.tools:
             raise HTTPException(status_code=500, detail="Assistant not initialized")
 
-        data = await request.get_json()
-        text = data.get('text')
-        if not text:
-            return jsonify({'error': 'No text provided'}), 400
+        if not request.text:
+            raise HTTPException(status_code=400, detail="No text provided")
 
-        voice_tool = next((tool for tool in app.assistant.tools if hasattr(tool, 'role') and getattr(tool, 'role', None) == VoiceRole.VOICE_CONTROL), None)
+        voice_tool = next(
+            (tool for tool in assistant.tools 
+             if hasattr(tool, 'role') and getattr(tool, 'role', None) == VoiceRole.VOICE_CONTROL),
+            None
+        )
+        
         if not voice_tool:
-            return jsonify({'error': 'Voice tool not available'}), 500
+            raise HTTPException(status_code=500, detail="Voice tool not available")
 
         try:
-            audio_path = await voice_tool.speak(text)
-            return jsonify({
-                'status': 'success',
-                'audio_path': audio_path
-            })
+            audio_path = await voice_tool.speak(request.text)
+            return SpeechResponse(
+                status="success",
+                audio_path=audio_path
+            )
         except Exception as e:
             logging.error(f"Error generating speech: {str(e)}")
-            return jsonify({'error': f'Speech generation failed: {str(e)}'}), 500
+            raise HTTPException(
+                status_code=500,
+                detail=f"Speech generation failed: {str(e)}"
+            )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error in speak endpoint: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing speech request: {str(e)}"
+        )
 
 @app.route('/transcribe', methods=['POST'])
 async def transcribe():
