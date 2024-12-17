@@ -69,9 +69,12 @@ export function CreateAgent() {
       const response = await fetch('http://localhost:8000/agents')
       if (!response.ok) throw new Error('Failed to fetch agents')
       const data = await response.json()
-      setExistingAgents(data)
+      // Ensure data is an array
+      setExistingAgents(Array.isArray(data) ? data : [])
     } catch (error) {
+      console.error('Error fetching agents:', error)
       toast.error('Failed to load existing agents')
+      setExistingAgents([])
     }
   }
 
@@ -176,8 +179,8 @@ export function CreateAgent() {
 
     <TabsContent value="existing">
       <div className="space-y-4">
-        {existingAgents.map((agent) => (
-          <Card key={agent.id}>
+        {existingAgents.length > 0 ? existingAgents.map((agent) => (
+          <Card key={agent.id || agent.name}>
             <CardHeader>
               <CardTitle className="text-lg">{agent.name}</CardTitle>
               <CardDescription>
