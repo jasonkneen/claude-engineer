@@ -564,9 +564,15 @@ class Assistant:
             if self.thinking_enabled:
                 with Live(Spinner('dots', text='Thinking...', style="cyan"),
                          refresh_per_second=10, transient=True):
-                    response = self._get_completion()
+                    response = await self._get_completion()
             else:
-                response = self._get_completion()
+                response = await self._get_completion()
+
+            # Ensure response is a string
+            if isinstance(response, (dict, list)):
+                response = str(response)
+            elif response is None:
+                response = "No response available"
 
             # Update conversation history
             self.conversation_history.append({
