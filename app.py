@@ -557,28 +557,35 @@ async def create_flow(flow: FlowRequest):
         if not flow:
             raise HTTPException(status_code=400, detail="No flow data provided")
 
-        required_fields = ['name', 'description', 'steps']
-        if not all(field in data for field in required_fields):
-            return jsonify({'error': 'Missing required fields'}), 400
+        # Validate steps
+        if not flow.steps:
+            raise HTTPException(
+                status_code=400,
+                detail="Steps must be a non-empty list"
+            )
 
-        steps = data['steps']
-        if not isinstance(steps, list) or not steps:
-            return jsonify({'error': 'Steps must be a non-empty list'}), 400
-
-        for step in steps:
-            if not isinstance(step, dict) or 'type' not in step or 'content' not in step:
-                return jsonify({'error': 'Invalid step format'}), 400
-
+        # Generate flow ID
         flow_id = f"flow_{int(time.time())}"
 
-        return jsonify({
-            'flow_id': flow_id,
-            'status': 'created',
-            'message': f"Created flow: {data['name']}"
-        })
+        # Create flow response
+        return FlowResponse(
+            flow_id=flow_id,
+            status="created",
+            message=f"Created flow: {flow.name}"
+        )
 
+    except ValidationError as e:
+        logging.error(f"Validation error in create-flow: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid flow data: {str(e)}"
+        )
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"Error in create-flow endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error creating flow: {str(e)}"
+        )
 
 if __name__ == '__main__':
     app.run(debug=False, port=6606, host='localhost')
