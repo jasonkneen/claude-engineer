@@ -1,25 +1,79 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ToolList } from './tool-list'
 import { toast } from 'sonner'
 
 const AGENT_ROLES = [
-  { value: 'test', label: 'Test Agent' },
-  { value: 'context', label: 'Context Manager' },
-  { value: 'orchestrator', label: 'Orchestrator' },
-  { value: 'custom', label: 'Custom Agent' },
+  { 
+    value: 'test', 
+    label: 'Test Agent',
+    description: 'Agent for testing and validation',
+    recommendedTools: ['agent_test_testagenttool_3']
+  },
+  { 
+    value: 'context', 
+    label: 'Context Manager',
+    description: 'Manages context and knowledge base',
+    recommendedTools: ['context_manager', 'file_reader']
+  },
+  { 
+    value: 'orchestrator', 
+    label: 'Orchestrator',
+    description: 'Coordinates multiple agents and workflows',
+    recommendedTools: ['agent_manager', 'context_manager']
+  },
+  { 
+    value: 'custom', 
+    label: 'Custom Agent',
+    description: 'Create a custom agent with selected tools',
+    recommendedTools: []
+  },
 ]
+
+interface Agent {
+  id: string
+  name: string
+  role: string
+  tools: string[]
+}
 
 export function CreateAgent() {
   const [name, setName] = useState('')
   const [role, setRole] = useState('')
   const [selectedTools, setSelectedTools] = useState<string[]>([])
   const [isCreating, setIsCreating] = useState(false)
+  const [existingAgents, setExistingAgents] = useState<Agent[]>([])
+  const [activeTab, setActiveTab] = useState('create')
+
+  useEffect(() => {
+    fetchExistingAgents()
+  }, [])
+
+  useEffect(() => {
+    if (role) {
+      const selectedRole = AGENT_ROLES.find(r => r.value === role)
+      if (selectedRole && selectedRole.recommendedTools.length > 0) {
+        setSelectedTools(selectedRole.recommendedTools)
+      }
+    }
+  }, [role])
+
+  const fetchExistingAgents = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/agents')
+      if (!response.ok) throw new Error('Failed to fetch agents')
+      const data = await response.json()
+      setExistingAgents(data)
+    } catch (error) {
+      toast.error('Failed to load existing agents')
+    }
+  }
 
   const handleCreateAgent = async () => {
     if (!name || !role || selectedTools.length === 0) {
@@ -62,10 +116,18 @@ export function CreateAgent() {
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
-        <CardTitle>Create New Agent</CardTitle>
-        <CardDescription>Configure your agent with tools and capabilities</CardDescription>
+        <CardTitle>Agent Management</CardTitle>
+        <CardDescription>Create and manage your AI agents</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="create">Create Agent</TabsTrigger>
+            <TabsTrigger value="existing">Existing Agents</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="create">
+      <div className="space-y-6">
         <div className="space-y-2">
           <label htmlFor="name" className="text-sm font-medium">
             Agent Name
@@ -97,8 +159,8 @@ export function CreateAgent() {
         </div>
 
         <ToolList onToolSelect={setSelectedTools} />
-      </CardContent>
-      <CardFooter>
+      </div>
+      <div className="mt-6">
         <Button 
           className="w-full" 
           onClick={handleCreateAgent} 
@@ -106,7 +168,40 @@ export function CreateAgent() {
         >
           {isCreating ? 'Creating...' : 'Create Agent'}
         </Button>
-      </CardFooter>
-    </Card>
+      </div>
+    </TabsContent>
+
+    <TabsContent value="existing">
+      <div className="space-y-4">
+        {existingAgents.map((agent) => (
+          <Card key={agent.id}>
+            <CardHeader>
+              <CardTitle className="text-lg">{agent.name}</CardTitle>
+              <CardDescription>
+                Role: {AGENT_ROLES.find(r => r.value === agent.role)?.label || agent.role}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm text-muted-foreground">
+                <div>Tools:</div>
+                <ul className="list-disc list-inside mt-1">
+                  {agent.tools.map((tool) => (
+                    <li key={tool}>{tool}</li>
+                  ))}
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+        {existingAgents.length === 0 && (
+          <div className="text-center text-muted-foreground py-8">
+            No agents created yet
+          </div>
+        )}
+      </div>
+    </TabsContent>
+  </Tabs>
+</CardContent>
+</Card>
   )
 }
