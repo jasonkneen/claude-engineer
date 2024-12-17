@@ -1,10 +1,10 @@
 "use client"
 
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card'
+import { ScrollArea } from '../ui/scroll-area'
+import { Checkbox } from '../ui/checkbox'
+import { Badge } from '../ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { StarIcon } from 'lucide-react'
 
