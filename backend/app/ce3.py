@@ -447,32 +447,36 @@ class Assistant:
                     system=f"{SystemPrompts.DEFAULT}\n\n{SystemPrompts.TOOL_USAGE}"
                 )
 
-                # Make API request
-                try:
-                    response = await self.api_router.route_request(
-                        provider=Config.DEFAULT_PROVIDER,
-                        messages=formatted_messages,
-                        config=config
-                    )
+                # Make API request and await response
+                response = await self.api_router.route_request(
+                    provider=Config.DEFAULT_PROVIDER,
+                    messages=formatted_messages,
+                    config=config
+                )
 
-                    # Handle token usage
-                    if isinstance(response, dict) and 'usage' in response:
-                        usage = response['usage']
-                        message_tokens = int(usage.get('input_tokens', 0)) + int(usage.get('output_tokens', 0))
-                        self.total_tokens_used += message_tokens
-                        self._display_token_usage(usage)
+                # Handle token usage if available
+                if isinstance(response, dict) and 'usage' in response:
+                    usage = response.get('usage', {})
+                    input_tokens = int(usage.get('input_tokens', 0))
+                    output_tokens = int(usage.get('output_tokens', 0))
+                    self.total_tokens_used += (input_tokens + output_tokens)
+                    self._display_token_usage(usage)
 
-                    # Extract and format content
-                    if isinstance(response, dict) and 'content' in response:
+                # Extract and format content
+                if isinstance(response, dict):
+                    if 'content' in response:
                         return str(response['content'])
-                    elif isinstance(response, dict):
-                        return str(response.get('content', 'No response content'))
+                    elif 'error' in response:
+                        return f"Error: {response['error']}"
                     else:
-                        return str(response)
+                        return str(response.get('content', 'No response content'))
+                
+                return str(response) if response else "No response"
 
-                except Exception as api_error:
-                    self.console.print(f"[red]API Error: {str(api_error)}[/red]")
-                    return f"Error: {str(api_error)}"
+            except Exception as api_error:
+                error_msg = f"API Error: {str(api_error)}"
+                self.console.print(f"[red]{error_msg}[/red]")
+                return error_msg
             except Exception as e:
                 self.console.print(f"[red]Error in completion:[/red] {str(e)}")
                 return f"Error: {str(e)}"
