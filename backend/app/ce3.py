@@ -217,12 +217,12 @@ class Assistant:
                 except Exception as tool_init_err:
                     self.console.print(f"[red]Error initializing tool {name}:[/red] {str(tool_init_err)}")
 
-    def refresh_tools(self):
+    async def refresh_tools(self):
         """
         Refresh the list of tools and show newly discovered tools.
         """
         current_tool_names = {tool['name'] for tool in self.tools}
-        self.tools = self._load_tools()
+        self.tools = await self._load_tools()
         new_tool_names = {tool['name'] for tool in self.tools}
         new_tools = new_tool_names - current_tool_names
 
