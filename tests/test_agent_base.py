@@ -6,47 +6,47 @@ import threading
 import time
 import asyncio
 
-class TestAgentTool(AgentBaseTool):
-    """Test implementation of AgentBaseTool"""
-    def __init__(self, agent_id: str, role: Union[AgentRole, str], name: Optional[str] = None):
-        super().__init__(agent_id, role, name)
-
-    async def _process_message(self, message: str, context: Dict[str, Any], api_provider: str) -> str:
-        return f"Processed: {message}"
+@pytest.fixture
+def test_agent():
+    """Fixture to create a test agent instance"""
+    class TestAgentTool(AgentBaseTool):
+        async def _process_message(self, message: str, context: Dict[str, Any], api_provider: str) -> str:
+            return f"Processed: {message}"
+    return TestAgentTool
 
 @pytest.mark.asyncio
-async def test_agent_initialization():
+async def test_agent_initialization(test_agent):
     """Test agent initialization with different roles"""
     # Test predefined role
-    agent1 = TestAgentTool("test1", AgentRole.TEST)
+    agent1 = test_agent("test1", AgentRole.TEST)
     await agent1.initialize()
     assert agent1.role == AgentRole.TEST
     assert agent1.custom_role is None
 
     # Test custom role as string
-    agent2 = TestAgentTool("test2", "specialized")
+    agent2 = test_agent("test2", "specialized")
     await agent2.initialize()
     assert agent2.role == AgentRole.CUSTOM
     assert agent2.custom_role == "specialized"
 
     # Test custom role with enum
-    agent3 = TestAgentTool("test3", AgentRole.CUSTOM, name="Custom Agent")
+    agent3 = test_agent("test3", AgentRole.CUSTOM, name="Custom Agent")
     await agent3.initialize()
     assert agent3.role == AgentRole.CUSTOM
     assert agent3.custom_role == "custom"
 
 @pytest.mark.asyncio
-async def test_agent_name_and_description():
+async def test_agent_name_and_description(test_agent):
     """Test agent name and description generation"""
-    agent = TestAgentTool("test1", AgentRole.TEST)
+    agent = test_agent("test1", AgentRole.TEST)
     await agent.initialize()
     assert "agent_test_test1" in agent.name
     assert "Agent-based tool for test operations" in agent.description
 
 @pytest.mark.asyncio
-async def test_agent_state_management():
+async def test_agent_state_management(test_agent):
     """Test agent state management and persistence"""
-    agent = TestAgentTool("test1", AgentRole.TEST)
+    agent = test_agent("test1", AgentRole.TEST)
     await agent.initialize()
 
     # Test pause/resume
@@ -57,13 +57,14 @@ async def test_agent_state_management():
 
     # Test context update
     context = {"key": "value"}
-    agent.update_context(context)
-    assert agent.get_state()["context"] == context
+    await agent.update_context(context)
+    state = await agent.get_state()
+    assert state["context"] == context
 
 @pytest.mark.asyncio
-async def test_thread_safety():
+async def test_thread_safety(test_agent):
     """Test thread-safe operations"""
-    agent = TestAgentTool("test1", AgentRole.TEST)
+    agent = test_agent("test1", AgentRole.TEST)
     await agent.initialize()
     results = []
 
@@ -82,9 +83,9 @@ async def test_thread_safety():
     assert all("Processed: test" in result for result in results)
 
 @pytest.mark.asyncio
-async def test_paused_execution():
+async def test_paused_execution(test_agent):
     """Test execution while agent is paused"""
-    agent = TestAgentTool("test1", AgentRole.TEST)
+    agent = test_agent("test1", AgentRole.TEST)
     await agent.initialize()
 
     # Pause agent
@@ -95,9 +96,9 @@ async def test_paused_execution():
     assert "is currently paused" in result
 
 @pytest.mark.asyncio
-async def test_input_schema():
+async def test_input_schema(test_agent):
     """Test input schema validation"""
-    agent = TestAgentTool("test1", AgentRole.TEST)
+    agent = test_agent("test1", AgentRole.TEST)
     await agent.initialize()
     schema = agent.input_schema
 
