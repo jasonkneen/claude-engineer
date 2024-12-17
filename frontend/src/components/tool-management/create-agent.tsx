@@ -218,9 +218,12 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
       setDescription('');
       setParsedAgent({});
       void fetchExistingAgents();
-          ...parsedData
-        }),
-      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to create agent');
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
       if (!response.ok) {
         throw new Error('Failed to create agent')
