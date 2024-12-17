@@ -18,7 +18,7 @@ interface ChatLayoutProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export function ChatLayout({ 
-  apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8085',
+  apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
   initialMessages = [],
   className,
   ...props 
