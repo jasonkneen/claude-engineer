@@ -39,6 +39,30 @@ class APIRouter(AbstractContextManager):
         self.anthropic_client = None
         self.openai_client = None
         self.logger = logging.getLogger(__name__)
+        self.active_connections: Set[WebSocket] = set()
+        self.agent_manager = AgentManagerTool()
+        self.context_manager = ContextManagerTool()
+        self.voice_tool = VoiceTool()
+
+    async def connect(self, websocket: WebSocket) -> None:
+        """Handle new WebSocket connection"""
+        await websocket.accept()
+        self.active_connections.add(websocket)
+        self.logger.info(f"New WebSocket connection: {id(websocket)}")
+
+    def disconnect(self, websocket: WebSocket) -> None:
+        """Handle WebSocket disconnection"""
+        self.active_connections.remove(websocket)
+        self.logger.info(f"WebSocket disconnected: {id(websocket)}")
+
+    async def broadcast(self, message: Dict[str, Any]) -> None:
+        """Broadcast message to all connected clients"""
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                self.logger.error(f"Error broadcasting to {id(connection)}: {str(e)}")
+                await self.disconnect(connection)
 
     async def __aenter__(self):
         return self
