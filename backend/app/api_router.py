@@ -32,6 +32,7 @@ class APIRouter(AbstractContextManager):
         self._executor = ThreadPoolExecutor(max_workers=4)
         self.anthropic_client = None
         self.openai_client = None
+        self.logger = logging.getLogger(__name__)
 
     async def __aenter__(self):
         return self
