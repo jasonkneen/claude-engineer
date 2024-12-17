@@ -99,7 +99,7 @@ class Assistant:
             self.console.print(f"[red]Failed to install {package_name}. Output:[/red] {result}")
             return False
 
-    def _load_tools(self) -> List[Dict[str, Any]]:
+    async def _load_tools(self) -> List[Dict[str, Any]]:
         """
         Dynamically load all tool classes from the tools directory.
         If a dependency is missing, prompt the user to install it via uvpackagemanager.
