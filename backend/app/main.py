@@ -82,15 +82,8 @@ async def chat(request: Request):
                 "id": str(int(timestamp.timestamp()))
             }
             
-            # Create response data with primitive types
-            timestamp = datetime.datetime.now()
-            response_data = {
-                "type": "message",
-                "content": str(response) if response else "",
-                "role": "assistant",
-                "timestamp": timestamp.isoformat(),
-                "id": str(int(timestamp.timestamp()))
-            }
+            # Return JSON response
+            return JSONResponse(content=jsonable_encoder(response_data))
             
             # Convert to JSON-compatible format and return
             json_compatible = jsonable_encoder(response_data)
