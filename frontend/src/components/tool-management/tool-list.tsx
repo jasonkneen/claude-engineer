@@ -102,15 +102,15 @@ export function ToolList({
       <CardContent>
         <ScrollArea className="h-[400px] pr-4">
           <div className="space-y-6">
-            {Object.entries(TOOL_CATEGORIES).map(([category, label]) => {
+            {(Object.entries(TOOL_CATEGORIES) as [CategoryKey, CategoryInfo][]).map(([category, info]) => {
               const categoryTools = tools.filter(tool => tool.category === category)
               if (categoryTools.length === 0) return null
 
               return (
                 <div key={category} className="space-y-3">
                   <div className="space-y-1">
-                    <h3 className="font-medium text-sm">{TOOL_CATEGORIES[category].label}</h3>
-                    <p className="text-sm text-muted-foreground">{TOOL_CATEGORIES[category].description}</p>
+                    <h3 className="font-medium text-sm">{info.label}</h3>
+                    <p className="text-sm text-muted-foreground">{info.description}</p>
                   </div>
                   <div className="space-y-2">
                     {categoryTools.map((tool) => (
