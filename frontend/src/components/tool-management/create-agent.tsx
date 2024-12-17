@@ -225,7 +225,7 @@ export function CreateAgent({ className, ...props }: CreateAgentProps) {
     } finally {
       setIsCreating(false);
     }
-  }, [description, fetchExistingAgents]);
+  }, [description, fetchExistingAgents, setParsedAgent, setDescription]);
 
   return (
     <Card className={cn("w-full max-w-2xl mx-auto", className)} {...props}>
