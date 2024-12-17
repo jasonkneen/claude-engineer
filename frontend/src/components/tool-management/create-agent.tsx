@@ -43,7 +43,11 @@ interface Agent {
   tools: string[]
 }
 
-export function CreateAgent() {
+interface CreateAgentProps {
+  className?: string
+}
+
+export function CreateAgent({ className }: CreateAgentProps) {
   const [name, setName] = useState('')
   const [role, setRole] = useState('')
   const [selectedTools, setSelectedTools] = useState<string[]>([])
