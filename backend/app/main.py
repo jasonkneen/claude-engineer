@@ -62,13 +62,18 @@ async def chat(request: Request):
             # Convert response to string if it's not already
             response_content = str(response) if not isinstance(response, str) else response
             
-            # Return a properly formatted response
-            return JSONResponse(content={
+            # Create response data
+            response_data = {
                 "type": "message",
                 "content": response_content,
                 "role": "assistant",
-                "timestamp": datetime.datetime.now().isoformat()
-            })
+                "timestamp": datetime.datetime.now().isoformat(),
+                "id": str(datetime.datetime.now().timestamp())
+            }
+            
+            # Use jsonable_encoder to ensure the response is JSON serializable
+            json_compatible_response = jsonable_encoder(response_data)
+            return JSONResponse(content=json_compatible_response)
         except Exception as chat_error:
             logger.error(f"Chat error: {str(chat_error)}")
             raise HTTPException(status_code=500, detail=str(chat_error))
