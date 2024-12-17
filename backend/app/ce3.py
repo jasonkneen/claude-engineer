@@ -464,17 +464,26 @@ class Assistant:
 
                 # Extract and format content
                 if isinstance(api_response, dict):
+                    # Handle dictionary response
                     if 'content' in api_response:
                         content = api_response['content']
                         return str(content) if content else "No response content"
                     elif 'error' in api_response:
                         return f"Error: {api_response['error']}"
                     else:
+                        # Try to extract content from nested structure
+                        for key in ['message', 'text', 'response']:
+                            if key in api_response:
+                                content = api_response[key]
+                                if content:
+                                    return str(content)
                         return str(api_response.get('content', 'No response content'))
                 
                 # Handle non-dict response
                 if api_response is None:
                     return "No response received"
+                
+                # Convert any other type to string
                 return str(api_response)
 
             except Exception as e:
