@@ -1,6 +1,6 @@
 from .base import BaseTool
-from tools.agent_base import AgentBaseTool, AgentRole
-from api_router import APIRouter, APIConfig
+from .agent_base import AgentBaseTool, AgentRole
+from ..api_router import APIRouter, APIConfig
 from typing import Dict, Any, Optional, List
 import asyncio
 import logging
