@@ -1,4 +1,7 @@
-from quart import Quart, render_template, request, jsonify, url_for
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from ce3 import Assistant
 from tools.agent_base import AgentBaseTool, AgentRole
 from tools.voice_tool import VoiceTool, VoiceRole
