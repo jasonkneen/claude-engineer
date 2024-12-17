@@ -177,33 +177,34 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
       const parseResponse = await fetch('http://localhost:8000/parse-agent', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ description }),
+        body: JSON.stringify({ description })
       }).catch(error => {
         throw new Error(`Network error: ${error.message}`)
-      })
+      });
 
       if (!parseResponse.ok) {
-        const errorData = await parseResponse.json().catch(() => ({}))
-        throw new Error(errorData.detail || 'Failed to parse agent description')
-      }
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ description }),
-      })
-
-      if (!parseResponse.ok) {
-        throw new Error('Failed to parse agent description')
+        const errorData = await parseResponse.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to parse agent description');
       }
 
-      const parsedData = await parseResponse.json()
-      setParsedAgent(parsedData)
+      const parsedData = await parseResponse.json();
+      setParsedAgent(parsedData);
 
       // Then create the agent
       const response = await fetch('http://localhost:8000/agents', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          description,
+          ...parsedData
+        })
+      }).catch(error => {
+        throw new Error(`Network error: ${error.message}`)
+      });
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
