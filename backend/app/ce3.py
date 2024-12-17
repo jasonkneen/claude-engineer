@@ -146,6 +146,10 @@ class Assistant:
                     if missing_module == 'tools.agent_base':
                         # Skip this error as it's trying to import itself
                         continue
+                    if missing_module.startswith('tools.'):
+                        # Skip optional tool modules
+                        self.console.print(f"[yellow]Skipping optional tool {module_info.name}[/yellow]")
+                        continue
                     self.console.print(f"\n[yellow]Missing dependency:[/yellow] {missing_module} for tool {module_info.name}")
                     user_response = input(f"Would you like to install {missing_module}? (y/n): ").lower()
 
