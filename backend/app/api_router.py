@@ -190,48 +190,38 @@ class APIRouter(AbstractContextManager):
                 "messages": formatted_messages
             }
 
-            try:
-                # Make API request
-                response = await self.anthropic_client.messages.create(**request_params)
+            # Make API request
+            response = await self.anthropic_client.messages.create(**request_params)
 
-                # Extract content from response
-                content = ""
-                if response and hasattr(response, 'content'):
-                    if isinstance(response.content, list) and response.content:
-                        content = response.content[0].text
-                    else:
-                        content = response.content
+            # Extract content from response
+            content = ""
+            if response and hasattr(response, 'content'):
+                if isinstance(response.content, list) and response.content:
+                    content = response.content[0].text
+                else:
+                    content = response.content
 
-                # Get usage information
+            # Get usage information
+            usage = {
+                "input_tokens": 0,
+                "output_tokens": 0
+            }
+            if hasattr(response, 'usage'):
                 usage = {
-                    "input_tokens": 0,
-                    "output_tokens": 0
-                }
-                if hasattr(response, 'usage'):
-                    usage = {
-                        "input_tokens": int(getattr(response.usage, "input_tokens", 0)),
-                        "output_tokens": int(getattr(response.usage, "output_tokens", 0))
-                    }
-
-                # Format response
-                return {
-                    "content": str(content),
-                    "usage": usage,
-                    "model": str(getattr(response, "model", config.model)),
-                    "role": "assistant"
+                    "input_tokens": int(getattr(response.usage, "input_tokens", 0)),
+                    "output_tokens": int(getattr(response.usage, "output_tokens", 0))
                 }
 
-            except Exception as api_error:
-                self.logger.error(f"Anthropic API request error: {str(api_error)}")
-                return {
-                    "content": f"API Error: {str(api_error)}",
-                    "usage": {"input_tokens": 0, "output_tokens": 0},
-                    "model": config.model,
-                    "role": "assistant"
-                }
+            # Return formatted response
+            return {
+                "content": str(content),
+                "usage": usage,
+                "model": str(getattr(response, "model", config.model)),
+                "role": "assistant"
+            }
 
         except Exception as e:
-            self.logger.error(f"Anthropic message formatting error: {str(e)}")
+            self.logger.error(f"Anthropic API error: {str(e)}")
             return {
                 "content": f"Error: {str(e)}",
                 "usage": {"input_tokens": 0, "output_tokens": 0},
