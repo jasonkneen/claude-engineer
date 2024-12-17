@@ -3,6 +3,22 @@
 import * as React from "react"
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+
+// Add type definitions for SpeechRecognition
+interface Window {
+  webkitSpeechRecognition: any;
+  SpeechRecognition: any;
+}
+
+interface SpeechRecognitionEvent {
+  results: {
+    [key: number]: {
+      [key: number]: {
+        transcript: string;
+      };
+    };
+  };
+}
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -103,9 +119,10 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
         // Initialize voice recognition
-        const recognition = new (window.webkitSpeechRecognition || window.SpeechRecognition)()
+        const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
+        const recognition = new SpeechRecognition()
         recognition.continuous = true
-        recognition.onresult = (event) => {
+        recognition.onresult = (event: SpeechRecognitionEvent) => {
           const transcript = event.results[event.results.length - 1][0].transcript
           setDescription(prev => prev + ' ' + transcript)
         }
@@ -177,9 +194,8 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
       const data = await response.json()
       toast.success(`Agent created successfully with ID: ${data.agent_id}`)
       
-      setName('')
-      setRole('')
-      setSelectedTools([])
+      setDescription('')
+      setParsedAgent({})
       void fetchExistingAgents()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create agent')
