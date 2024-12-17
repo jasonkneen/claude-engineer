@@ -140,7 +140,7 @@ class Assistant:
 
                 try:
                     module = importlib.import_module(f'tools.{module_info.name}')
-                    self._extract_tools_from_module(module, tools)
+                    await self._extract_tools_from_module(module, tools)
                 except ImportError as e:
                     missing_module = self._parse_missing_dependency(str(e))
                     if missing_module == 'tools.agent_base':
@@ -158,7 +158,7 @@ class Assistant:
                         if success:
                             try:
                                 module = importlib.import_module(f'tools.{module_info.name}')
-                                self._extract_tools_from_module(module, tools)
+                                await self._extract_tools_from_module(module, tools)
                             except Exception as retry_err:
                                 self.console.print(f"[red]Failed to load tool after installation: {str(retry_err)}[/red]")
                         else:
