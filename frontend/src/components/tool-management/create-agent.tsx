@@ -1,7 +1,11 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
+import { CardContent } from '@/components/ui/card'
+import { CardDescription } from '@/components/ui/card'
+import { CardHeader } from '@/components/ui/card'
+import { CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
