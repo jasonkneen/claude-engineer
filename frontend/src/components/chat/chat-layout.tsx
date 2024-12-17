@@ -25,30 +25,42 @@ export function ChatLayout({
   ...props 
 }: ChatLayoutProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
-  const [socket, setSocket] = useState<Socket | null>(null)
+  const [socket, setSocket] = useState<WebSocket | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    const newSocket = io(apiUrl)
-    setSocket(newSocket)
+    const ws = new WebSocket('ws://localhost:8000/ws')
+    setSocket(ws)
 
-    newSocket.on('message', (message: Message) => {
-      setMessages(prev => [...prev, message])
-      setIsLoading(false)
-    })
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+      if (data.type === 'message') {
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          content: data.content,
+          role: data.role,
+          timestamp: new Date().toISOString()
+        }])
+        setIsLoading(false)
+      }
+    }
 
-    newSocket.on('error', (error: string) => {
-      console.error('Socket error:', error)
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error)
       setIsLoading(false)
-    })
+    }
+
+    ws.onclose = () => {
+      console.log('WebSocket connection closed')
+    }
 
     return () => {
-      newSocket.close()
+      ws.close()
     }
-  }, [apiUrl])
+  }, [])
 
   const handleSubmit = (content: string) => {
-    if (!socket) return
+    if (!socket || socket.readyState !== WebSocket.OPEN) return
 
     const newMessage: Message = {
       id: Date.now().toString(),
@@ -59,7 +71,7 @@ export function ChatLayout({
 
     setMessages(prev => [...prev, newMessage])
     setIsLoading(true)
-    socket.emit('message', content)
+    socket.send(JSON.stringify({ content }))
   }
 
   return (
