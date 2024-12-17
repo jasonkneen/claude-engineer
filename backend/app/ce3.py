@@ -64,10 +64,11 @@ class Assistant:
         
         self.api_router = await APIRouter().__aenter__()
         self.tools = await self._load_tools()
-        self.agent_manager = await AgentManagerTool(
+        self.agent_manager = AgentManagerTool(
             agent_id="manager",
-            role=AgentRole.ORCHESTRATOR
-        ).__aenter__()
+            name="agent_orchestrator_manager"
+        )
+        await self.agent_manager.initialize()
         return self
 
     async def __aenter__(self):
