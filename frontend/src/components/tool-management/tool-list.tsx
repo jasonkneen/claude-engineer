@@ -97,7 +97,10 @@ export function ToolList({
 
               return (
                 <div key={category} className="space-y-3">
-                  <h3 className="font-medium text-sm text-muted-foreground">{label}</h3>
+                  <div className="space-y-1">
+                    <h3 className="font-medium text-sm">{TOOL_CATEGORIES[category].label}</h3>
+                    <p className="text-sm text-muted-foreground">{TOOL_CATEGORIES[category].description}</p>
+                  </div>
                   <div className="space-y-2">
                     {categoryTools.map((tool) => (
                       <TooltipProvider key={tool.name}>
