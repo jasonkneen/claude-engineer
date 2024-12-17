@@ -6,9 +6,8 @@ import json
 import sys
 import os
 
-# Add the parent directory to sys.path to import ce3
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from ce3 import Assistant
+# Import the Assistant from local ce3.py
+from .ce3 import Assistant
 
 app = FastAPI(title="Claude Engineer API")
 
