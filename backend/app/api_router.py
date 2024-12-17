@@ -167,30 +167,49 @@ class APIRouter(AbstractContextManager):
             for msg in messages:
                 if isinstance(msg, dict):
                     formatted_messages.append({
-                        "role": msg.get("role", "user"),
+                        "role": str(msg.get("role", "user")),
                         "content": str(msg.get("content", ""))
                     })
 
-            # Make API request
-            response = await self.anthropic_client.messages.create(
-                model=config.model,
-                max_tokens=config.max_tokens,
-                temperature=config.temperature,
-                messages=formatted_messages
-            )
-
-            # Extract content from response
-            content = response.content[0].text if isinstance(response.content, list) else response.content
-
-            return {
-                "content": str(content),
-                "usage": {
-                    "input_tokens": getattr(response.usage, "input_tokens", 0),
-                    "output_tokens": getattr(response.usage, "output_tokens", 0)
-                },
-                "model": str(response.model),
-                "role": "assistant"
+            # Create API request parameters
+            request_params = {
+                "model": config.model,
+                "max_tokens": config.max_tokens,
+                "temperature": config.temperature,
+                "messages": formatted_messages
             }
+
+            # Make API request
+            try:
+                response = await self.anthropic_client.messages.create(**request_params)
+
+                # Extract content from response
+                if hasattr(response, 'content') and response.content:
+                    if isinstance(response.content, list):
+                        content = response.content[0].text
+                    else:
+                        content = response.content
+                else:
+                    content = ""
+
+                # Format response
+                return {
+                    "content": str(content),
+                    "usage": {
+                        "input_tokens": int(getattr(response.usage, "input_tokens", 0)),
+                        "output_tokens": int(getattr(response.usage, "output_tokens", 0))
+                    },
+                    "model": str(getattr(response, "model", config.model)),
+                    "role": "assistant"
+                }
+            except Exception as api_error:
+                self.logger.error(f"Anthropic API error: {str(api_error)}")
+                return {
+                    "content": f"API Error: {str(api_error)}",
+                    "usage": {"input_tokens": 0, "output_tokens": 0},
+                    "model": config.model,
+                    "role": "assistant"
+                }
         except Exception as e:
             self.logger.error(f"Anthropic API error: {str(e)}")
             raise
