@@ -69,8 +69,18 @@ async def chat(request: Request):
         logger.info(f"Processing chat message: {content[:100]}...")  # Log first 100 chars
         
         try:
-            # Get response from assistant
-            response = await assistant.chat(content)
+            # Get response from assistant and ensure it's properly awaited
+            chat_response = await assistant.chat(content)
+            
+            # Create response data with primitive types
+            timestamp = datetime.datetime.now()
+            response_data = {
+                "type": "message",
+                "content": str(chat_response) if chat_response else "",
+                "role": "assistant",
+                "timestamp": timestamp.isoformat(),
+                "id": str(int(timestamp.timestamp()))
+            }
             
             # Create response data with primitive types
             timestamp = datetime.datetime.now()
