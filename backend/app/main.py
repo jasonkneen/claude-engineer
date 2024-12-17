@@ -88,21 +88,33 @@ async def chat(request: Request):
             
         except Exception as chat_error:
             logger.error(f"Chat error: {str(chat_error)}")
+            timestamp = datetime.datetime.now()
             error_data = {
                 "type": "error",
                 "content": str(chat_error),
                 "role": "assistant",
-                "timestamp": datetime.datetime.now().isoformat(),
-                "id": str(int(datetime.datetime.now().timestamp()))
+                "timestamp": timestamp.isoformat(),
+                "id": str(int(timestamp.timestamp()))
             }
-            json_compatible = jsonable_encoder(error_data)
             return JSONResponse(
                 status_code=500,
-                content=json_compatible
+                content=jsonable_encoder(error_data)
             )
             
     except Exception as e:
         logger.error(f"Error processing chat message: {str(e)}")
+        timestamp = datetime.datetime.now()
+        error_data = {
+            "type": "error",
+            "content": str(e),
+            "role": "assistant",
+            "timestamp": timestamp.isoformat(),
+            "id": str(int(timestamp.timestamp()))
+        }
+        return JSONResponse(
+            status_code=500,
+            content=jsonable_encoder(error_data)
+        )
         error_response = ChatResponse(
             type="error",
             content=str(e),
