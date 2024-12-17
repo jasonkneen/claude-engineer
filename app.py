@@ -1,6 +1,22 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
+
+class ChatMessage(BaseModel):
+    message: str
+    image: Optional[str] = None
+
+class ChatResponse(BaseModel):
+    response: str
+    thinking: bool = False
+    tool_name: Optional[str] = None
+    token_usage: Optional[Dict[str, int]] = None
+
+class AgentConfig(BaseModel):
+    enabled: bool
+    agents: Optional[Dict[str, Any]] = None
 from fastapi.staticfiles import StaticFiles
 from ce3 import Assistant
 from tools.agent_base import AgentBaseTool, AgentRole
