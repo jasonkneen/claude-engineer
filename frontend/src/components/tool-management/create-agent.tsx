@@ -177,37 +177,37 @@ export function CreateAgent() {
             </div>
           </TabsContent>
 
-    <TabsContent value="existing">
-      <div className="space-y-4">
-        {existingAgents.length > 0 ? existingAgents.map((agent) => (
-          <Card key={agent.id || agent.name}>
-            <CardHeader>
-              <CardTitle className="text-lg">{agent.name}</CardTitle>
-              <CardDescription>
-                Role: {AGENT_ROLES.find(r => r.value === agent.role)?.label || agent.role}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-sm text-muted-foreground">
-                <div>Tools:</div>
-                <ul className="list-disc list-inside mt-1">
-                  {agent.tools.map((tool) => (
-                    <li key={tool}>{tool}</li>
-                  ))}
-                </ul>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-        {existingAgents.length === 0 && (
-          <div className="text-center text-muted-foreground py-8">
-            No agents created yet
-          </div>
-        )}
-      </div>
-    </TabsContent>
-  </Tabs>
-</CardContent>
-</Card>
+          <TabsContent value="existing">
+            <div className="space-y-4">
+              {existingAgents.length > 0 ? existingAgents.map((agent) => (
+                <Card key={agent.id || agent.name}>
+                  <CardHeader>
+                    <CardTitle className="text-lg">{agent.name}</CardTitle>
+                    <CardDescription>
+                      Role: {AGENT_ROLES.find(r => r.value === agent.role)?.label || agent.role}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-sm text-muted-foreground">
+                      <div>Tools:</div>
+                      <ul className="list-disc list-inside mt-1">
+                        {agent.tools.map((tool) => (
+                          <li key={tool}>{tool}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {existingAgents.length === 0 && (
+                <div className="text-center text-muted-foreground py-8">
+                  No agents created yet
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
   )
 }
