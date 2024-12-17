@@ -143,6 +143,9 @@ class Assistant:
                     self._extract_tools_from_module(module, tools)
                 except ImportError as e:
                     missing_module = self._parse_missing_dependency(str(e))
+                    if missing_module == 'tools.agent_base':
+                        # Skip this error as it's trying to import itself
+                        continue
                     self.console.print(f"\n[yellow]Missing dependency:[/yellow] {missing_module} for tool {module_info.name}")
                     user_response = input(f"Would you like to install {missing_module}? (y/n): ").lower()
 
