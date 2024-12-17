@@ -2,12 +2,23 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from typing import Dict, Any
+from pydantic import BaseModel
+from typing import Dict, Any, Optional
 import json
 import sys
 import os
 import logging
 import datetime
+
+class ChatResponse(BaseModel):
+    type: str = "message"
+    content: str
+    role: str = "assistant"
+    timestamp: str
+    id: str
+
+class ChatRequest(BaseModel):
+    content: str
 
 # Configure logging
 logging.basicConfig(
