@@ -4,7 +4,6 @@ import logging
 import os
 import subprocess
 import tempfile
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
@@ -65,22 +64,27 @@ class TestAgentTool(AgentBaseTool):
             name=name
         )
         self.logger = logging.getLogger(__name__)
+        self._executor = ThreadPoolExecutor(max_workers=4)
+        self.spec_changes = []
 
+    async def initialize(self):
+        """Initialize the test agent"""
+        await super().initialize()
+        
         # Initialize tests in persistent state storage
-        with self._lock:
-            if 'tests' not in self.state.data:
-                self.state.data['tests'] = {}
-            self.tests = self.state.data['tests']  # Reference to persistent storage
-            self.logger.debug(f"Initialized tests dictionary: {self.state.data['tests']}")
+        if 'tests' not in self.state.data:
+            self.state.data['tests'] = {}
+        self.tests = self.state.data['tests']  # Reference to persistent storage
+        self.logger.debug(f"Initialized tests dictionary: {self.state.data['tests']}")
 
-    def execute(self, **kwargs) -> str:
+    async def execute(self, **kwargs) -> str:
         """Execute test agent action"""
         self.logger.debug(f"Executing with args: {kwargs}")
 
         try:
             # Handle message-based execution from base class
             if "message" in kwargs:
-                return self._process_message(
+                return await self._process_message(
                     message=kwargs["message"],
                     context=kwargs.get("context", {}),
                     api_provider=kwargs.get("api_provider", "anthropic")
@@ -92,53 +96,54 @@ class TestAgentTool(AgentBaseTool):
                 return "Action is required"
 
             # Execute action with proper locking
-            if action == "create":
-                test_name = kwargs.get("test_name")
-                if not test_name:
-                    return "Test name is required"
+            async with self._lock:
+                if action == "create":
+                    test_name = kwargs.get("test_name")
+                    if not test_name:
+                        return "Test name is required"
 
-                test_code = kwargs.get("test_code")
-                code_changes = kwargs.get("code_changes", {})
+                    test_code = kwargs.get("test_code")
+                    code_changes = kwargs.get("code_changes", {})
 
-                return self._create_test(
-                    test_name=test_name,
-                    code_changes=code_changes,
-                    test_code=test_code
-                )
+                    return await self._create_test(
+                        test_name=test_name,
+                        code_changes=code_changes,
+                        test_code=test_code
+                    )
 
-            elif action == "update":
-                test_name = kwargs.get("test_name")
-                if not test_name:
-                    return "Test name is required"
+                elif action == "update":
+                    test_name = kwargs.get("test_name")
+                    if not test_name:
+                        return "Test name is required"
 
-                test_code = kwargs.get("test_code")
-                if not test_code:
-                    return "Test code is required for update"
+                    test_code = kwargs.get("test_code")
+                    if not test_code:
+                        return "Test code is required for update"
 
-                return self._update_test(test_name, test_code)
+                    return await self._update_test(test_name, test_code)
 
-            elif action == "list":
-                return self._list_tests()
+                elif action == "list":
+                    return await self._list_tests()
 
-            elif action == "delete":
-                test_name = kwargs.get("test_name")
-                if not test_name:
-                    return "Test name is required"
+                elif action == "delete":
+                    test_name = kwargs.get("test_name")
+                    if not test_name:
+                        return "Test name is required"
 
-                return self._delete_test(test_name)
+                    return await self._delete_test(test_name)
 
-            elif action == "run":
-                test_name = kwargs.get("test_name")
-                return self._run_tests(test_name)
+                elif action == "run":
+                    test_name = kwargs.get("test_name")
+                    return await self._run_tests(test_name)
 
-            else:
-                return f"Unknown action: {action}"
+                else:
+                    return f"Unknown action: {action}"
 
         except Exception as e:
             self.logger.error(f"Error executing action: {str(e)}")
             return f"Error executing action: {str(e)}"
 
-    def _create_test(
+    async def _create_test(
         self,
         test_name: str,
         code_changes: Dict[str, str] = None,
@@ -146,61 +151,54 @@ class TestAgentTool(AgentBaseTool):
     ) -> str:
         """Create a new test"""
         self.logger.debug(f"Creating test with name: {test_name}, changes: {code_changes}, code: {test_code}")
-        self.logger.debug(f"Current tests before creation: {self.state.data.get('tests', {})}")
 
-        with self._lock:
-            # Initialize tests dict if not exists
-            if 'tests' not in self.state.data:
-                self.state.data['tests'] = {}
+        if test_name in self.state.data['tests']:
+            return f"Test {test_name} already exists"
 
-            if test_name in self.state.data['tests']:
-                return f"Test {test_name} already exists"
+        if not test_code and not code_changes:
+            return "Either test code or code changes must be provided"
 
-            if not test_code and not code_changes:
-                return "Either test code or code changes must be provided"
+        if not test_code and code_changes:
+            test_code = await self._generate_test_code(code_changes)
 
-            if not test_code and code_changes:
-                test_code = self._generate_test_code(code_changes)
+        # Validate test code syntax
+        try:
+            ast.parse(test_code)
+        except SyntaxError as e:
+            # Store invalid test for tracking
+            test_spec = TestSpec(
+                name=test_name,
+                description=await self._extract_test_description(test_code),
+                code=test_code,
+                changes=list(code_changes.items()) if code_changes else [],
+                created_at=datetime.now().isoformat()
+            )
+            self.state.data['tests'][test_name] = test_spec
+            self.tests = self.state.data['tests']
+            return f"Invalid test code: {str(e)}"
 
-            # Validate test code syntax
-            try:
-                ast.parse(test_code)
-            except SyntaxError as e:
-                # Store invalid test for tracking
-                test_spec = TestSpec(
-                    name=test_name,
-                    description=self._extract_test_description(test_code),
-                    code=test_code,
-                    changes=list(code_changes.items()) if code_changes else [],
-                    created_at=datetime.now().isoformat()
-                )
-                self.state.data['tests'][test_name] = test_spec
-                self.tests = self.state.data['tests']
-                return f"Invalid test code: {str(e)}"
+        try:
+            # Create test spec
+            test_spec = TestSpec(
+                name=test_name,
+                description=await self._extract_test_description(test_code),
+                code=test_code,
+                changes=list(code_changes.items()) if code_changes else [],
+                created_at=datetime.now().isoformat()
+            )
 
-            try:
-                # Create test spec
-                test_spec = TestSpec(
-                    name=test_name,
-                    description=self._extract_test_description(test_code),
-                    code=test_code,
-                    changes=list(code_changes.items()) if code_changes else [],
-                    created_at=datetime.now().isoformat()
-                )
+            # Store test in persistent storage
+            self.state.data['tests'][test_name] = test_spec
+            self.tests = self.state.data['tests']  # Update local reference
+            self.logger.debug(f"Created test spec: {test_spec}")
 
-                # Store test in persistent storage
-                self.state.data['tests'][test_name] = test_spec
-                self.tests = self.state.data['tests']  # Update local reference
-                self.logger.debug(f"Created test spec: {test_spec}")
-                self.logger.debug(f"Current tests after creation: {self.state.data['tests']}")
+            return f"Created test {test_name}"
 
-                return f"Created test {test_name}"
+        except Exception as e:
+            self.logger.error(f"Error creating test: {str(e)}")
+            return f"Error creating test: {str(e)}"
 
-            except Exception as e:
-                self.logger.error(f"Error creating test: {str(e)}")
-                return f"Error creating test: {str(e)}"
-
-    def _update_test(self, test_name: str, test_code: str) -> str:
+    async def _update_test(self, test_name: str, test_code: str) -> str:
         """Update existing test"""
         if not test_name or test_name not in self.state.data['tests']:
             return f"Test {test_name} not found"
@@ -215,7 +213,7 @@ class TestAgentTool(AgentBaseTool):
             # Update test
             test_spec = self.state.data['tests'][test_name]
             test_spec.code = test_code
-            test_spec.description = self._extract_test_description(test_code)
+            test_spec.description = await self._extract_test_description(test_code)
 
             return f"Updated test {test_name}"
 
@@ -224,70 +222,67 @@ class TestAgentTool(AgentBaseTool):
         except Exception as e:
             return f"Error updating test: {str(e)}"
 
-    def _list_tests(self) -> str:
+    async def _list_tests(self) -> str:
         """List all registered tests"""
         self.logger.debug(f"Listing tests. Current tests: {self.state.data.get('tests', {})}")
 
-        with self._lock:
-            if not self.state.data.get('tests', {}):
-                return "No tests registered"
+        if not self.state.data.get('tests', {}):
+            return "No tests registered"
 
-            result = []
-            for name, test in self.state.data['tests'].items():
-                result.append(
-                    f"Test: {name}\n"
-                    f"Description: {test.description}\n"
-                    f"Created: {test.created_at}\n"
-                    f"Changes: {len(test.changes)}\n"
-                    "---"
-                )
-            return "\n".join(result)
+        result = []
+        for name, test in self.state.data['tests'].items():
+            result.append(
+                f"Test: {name}\n"
+                f"Description: {test.description}\n"
+                f"Created: {test.created_at}\n"
+                f"Changes: {len(test.changes)}\n"
+                "---"
+            )
+        return "\n".join(result)
 
-    def _delete_test(self, test_name: str) -> str:
+    async def _delete_test(self, test_name: str) -> str:
         """Delete a test"""
-        with self._lock:
-            if test_name not in self.state.data['tests']:
-                return f"Test {test_name} not found"
+        if test_name not in self.state.data['tests']:
+            return f"Test {test_name} not found"
 
-            del self.state.data['tests'][test_name]
-            self.tests = self.state.data['tests']  # Update local reference
-            return f"Deleted test {test_name}"
+        del self.state.data['tests'][test_name]
+        self.tests = self.state.data['tests']  # Update local reference
+        return f"Deleted test {test_name}"
 
-    def _run_tests(self, test_name: Optional[str] = None) -> str:
+    async def _run_tests(self, test_name: Optional[str] = None) -> str:
         """Run tests and return results"""
         self.logger.debug(f"Running tests. Test name: {test_name}, All tests: {self.state.data.get('tests', {})}")
 
-        with self._lock:
-            if not self.state.data.get('tests', {}):
-                return "No tests registered"
+        if not self.state.data.get('tests', {}):
+            return "No tests registered"
 
-            results = []
-            tests_to_run = {}
+        results = []
+        tests_to_run = {}
 
-            # Determine which tests to run
-            if test_name:
-                if test_name not in self.state.data['tests']:
-                    return f"Test {test_name} not found"
-                tests_to_run[test_name] = self.state.data['tests'][test_name]
-            else:
-                tests_to_run = self.state.data['tests']
+        # Determine which tests to run
+        if test_name:
+            if test_name not in self.state.data['tests']:
+                return f"Test {test_name} not found"
+            tests_to_run[test_name] = self.state.data['tests'][test_name]
+        else:
+            tests_to_run = self.state.data['tests']
 
-            # Run selected tests
-            for name, test in tests_to_run.items():
-                self.logger.debug(f"Running test: {name}")
-                try:
-                    result = self._execute_test(test.code)
-                    results.append(f"Test {name}: {result}")
-                except SyntaxError as e:
-                    self.logger.error(f"Syntax error in test {name}: {str(e)}")
-                    results.append(f"Test {name}: FAIL - Syntax error: {str(e)}")
-                except Exception as e:
-                    self.logger.error(f"Error running test {name}: {str(e)}")
-                    results.append(f"Test {name}: FAIL - {str(e)}")
+        # Run selected tests
+        for name, test in tests_to_run.items():
+            self.logger.debug(f"Running test: {name}")
+            try:
+                result = await self._execute_test(test.code)
+                results.append(f"Test {name}: {result}")
+            except SyntaxError as e:
+                self.logger.error(f"Syntax error in test {name}: {str(e)}")
+                results.append(f"Test {name}: FAIL - Syntax error: {str(e)}")
+            except Exception as e:
+                self.logger.error(f"Error running test {name}: {str(e)}")
+                results.append(f"Test {name}: FAIL - {str(e)}")
 
-            return "\n".join(results)
+        return "\n".join(results)
 
-    def _generate_test_code(self, code_changes: Dict[str, Any]) -> str:
+    async def _generate_test_code(self, code_changes: Dict[str, Any]) -> str:
         """Generate test code from code changes"""
         self.logger.debug(f"Generating test code from changes: {code_changes}")
 
@@ -308,7 +303,7 @@ class TestAgentTool(AgentBaseTool):
 
         return "\n    ".join(test_code) if test_code else "def test_placeholder():\n    assert True"
 
-    def _extract_test_description(self, test_code: str) -> str:
+    async def _extract_test_description(self, test_code: str) -> str:
         """Extract test description from docstring"""
         try:
             # Handle escaped newlines in test code
@@ -325,7 +320,7 @@ class TestAgentTool(AgentBaseTool):
             self.logger.error(f"Error extracting description: {str(e)}")
             return "No description available"
 
-    def _execute_test(self, test_code: str) -> str:
+    async def _execute_test(self, test_code: str) -> str:
         """Execute a test and return the result"""
         self.logger.debug(f"Executing test code: {test_code}")
 
@@ -336,16 +331,24 @@ class TestAgentTool(AgentBaseTool):
                 temp_path = f.name
 
             try:
-                # Run test using pytest
-                result = subprocess.run(
-                    ['pytest', temp_path, '-v'],
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
-                return "PASS"
-            except subprocess.CalledProcessError as e:
-                return "FAIL"
+                # Run test using pytest in executor to avoid blocking
+                def run_test():
+                    try:
+                        subprocess.run(
+                            ['pytest', temp_path, '-v'],
+                            capture_output=True,
+                            text=True,
+                            check=True
+                        )
+                        return "PASS"
+                    except subprocess.CalledProcessError:
+                        return "FAIL"
+
+                # Run in thread pool
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(self._executor, run_test)
+                return result
+
             finally:
                 # Clean up temp file
                 os.unlink(temp_path)
@@ -354,16 +357,7 @@ class TestAgentTool(AgentBaseTool):
             self.logger.error(f"Error executing test: {str(e)}")
             return f"Error executing test: {str(e)}"
 
-    def _update_spec_changes(self, code_changes: Dict[str, Any]) -> None:
-        """Update app specification changes"""
-        if code_changes:
-            self.spec_changes.append({
-                "timestamp": str(datetime.now().isoformat()),
-                "changes": code_changes
-            })
-            self.logger.debug(f"Updated spec changes: {self.spec_changes}")
-
-    def _process_message(self, message: str, context: Dict[str, Any], api_provider: str) -> str:
+    async def _process_message(self, message: str, context: Dict[str, Any], api_provider: str) -> str:
         """Process message through central server"""
         try:
             # Parse message as JSON
@@ -384,7 +378,7 @@ class TestAgentTool(AgentBaseTool):
                 "context": context,
                 "api_provider": api_provider
             }
-            return self.execute(**kwargs)
+            return await self.execute(**kwargs)
 
         except Exception as e:
             self.logger.error(f"Error processing message: {str(e)}")
@@ -392,5 +386,6 @@ class TestAgentTool(AgentBaseTool):
 
     async def close(self):
         """Clean up resources"""
+        await super().close()
         if hasattr(self, '_executor'):
             self._executor.shutdown(wait=True)
