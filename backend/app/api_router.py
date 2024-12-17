@@ -193,8 +193,20 @@ class APIRouter(AbstractContextManager):
         self,
         provider: str,
         messages: list,
-        config: Optional[APIConfig] = None
+        config: Optional[APIConfig] = None,
+        role: Optional[str] = None
     ) -> Dict[str, Any]:
+        """Route request to specified provider with tool selection.
+
+        Args:
+            provider: Provider name ('anthropic' or 'openai')
+            messages: List of conversation messages
+            config: Optional API configuration
+            role: Optional agent role for tool selection
+
+        Returns:
+            API response as dict
+        """
         """Route request to specified provider.
 
         Args:
