@@ -253,33 +253,51 @@ class APIRouter(AbstractContextManager):
                 "temperature": config.temperature
             }
 
-            # Make API request
             try:
+                # Make API request
                 response = await self.openai_client.chat.completions.create(**request_params)
 
                 # Extract content from response
                 content = ""
-                if hasattr(response, 'choices') and response.choices:
+                if response and hasattr(response, 'choices') and response.choices:
                     content = response.choices[0].message.content
+
+                # Get usage information
+                usage = {
+                    "input_tokens": 0,
+                    "output_tokens": 0
+                }
+                if hasattr(response, 'usage'):
+                    usage = {
+                        "input_tokens": int(getattr(response.usage, "prompt_tokens", 0)),
+                        "output_tokens": int(getattr(response.usage, "completion_tokens", 0))
+                    }
 
                 # Format response
                 return {
                     "content": str(content),
-                    "usage": {
-                        "input_tokens": int(getattr(response.usage, "prompt_tokens", 0)),
-                        "output_tokens": int(getattr(response.usage, "completion_tokens", 0))
-                    },
+                    "usage": usage,
                     "model": str(getattr(response, "model", config.model)),
                     "role": "assistant"
                 }
+
             except Exception as api_error:
-                self.logger.error(f"OpenAI API error: {str(api_error)}")
+                self.logger.error(f"OpenAI API request error: {str(api_error)}")
                 return {
                     "content": f"API Error: {str(api_error)}",
                     "usage": {"input_tokens": 0, "output_tokens": 0},
                     "model": config.model,
                     "role": "assistant"
                 }
+
+        except Exception as e:
+            self.logger.error(f"OpenAI message formatting error: {str(e)}")
+            return {
+                "content": f"Error: {str(e)}",
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+                "model": config.model,
+                "role": "assistant"
+            }
         except Exception as e:
             self.logger.error(f"OpenAI API error: {str(e)}")
             raise
