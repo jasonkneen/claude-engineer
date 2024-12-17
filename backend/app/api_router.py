@@ -18,6 +18,47 @@ from .tools.agent_manager import AgentManagerTool
 from .tools.context_manager import ContextManagerTool
 from .tools.voice_tool import VoiceTool
 
+async def parse_agent_description(description: str) -> Dict[str, Any]:
+    """Parse natural language description into agent properties"""
+    try:
+        # Use Claude to parse the description
+        messages = [{
+            "role": "user",
+            "content": f"""Parse this agent description and extract name, role, and recommended tools.
+            Description: {description}
+            
+            Return a JSON object with:
+            - name: extracted or generated name
+            - role: one of [test, context, orchestrator, custom]
+            - tools: list of recommended tool names
+            
+            Base the tool selection on the agent's purpose."""
+        }]
+        
+        response = await anthropic.messages.create(
+            model="claude-3-sonnet-20240229",
+            max_tokens=1000,
+            messages=messages
+        )
+        
+        # Extract the JSON from Claude's response
+        content = response.content[0].text
+        parsed = json.loads(content)
+        
+        return {
+            "name": parsed.get("name", ""),
+            "role": parsed.get("role", "custom"),
+            "tools": parsed.get("tools", [])
+        }
+        
+    except Exception as e:
+        logging.error(f"Error parsing agent description: {str(e)}")
+        return {
+            "name": "",
+            "role": "custom",
+            "tools": []
+        }
+
 def get_tools_for_role(role: str) -> List[str]:
     """Get recommended tools for a given role"""
     role_tools = {
@@ -136,6 +177,16 @@ class APIRouter(AbstractContextManager):
             message_type = message.get("type", "message")
             content = message.get("content", "")
             voice_enabled = message.get("voice", False)
+            
+            # Handle agent creation from natural language
+            if message_type == "create_agent":
+                parsed = await self.parse_agent(content)
+                await websocket.send_json({
+                    "type": "agent_parsed",
+                    "content": parsed,
+                    "timestamp": datetime.datetime.now().isoformat()
+                })
+                return
 
             # Get response from LLM
             response = await self.route_request(
@@ -502,6 +553,17 @@ class APIRouter(AbstractContextManager):
     async def close(self):
         """Clean up resources"""
         self._executor.shutdown(wait=True)
+
+    async def parse_agent(self, description: str) -> Dict[str, Any]:
+        """Parse agent description and return properties"""
+        try:
+            parsed = await parse_agent_description(description)
+            if not parsed["name"] or not parsed["role"]:
+                raise ValueError("Failed to parse agent properties")
+            return parsed
+        except Exception as e:
+            self.logger.error(f"Error in parse_agent: {str(e)}")
+            raise
 
     async def handle_websocket(self, websocket: WebSocket):
         """Handle WebSocket connection and messages"""
