@@ -154,7 +154,7 @@ class Assistant:
                     user_response = input(f"Would you like to install {missing_module}? (y/n): ").lower()
 
                     if user_response == 'y':
-                        success = self._execute_uv_install(missing_module)
+                        success = await self._execute_uv_install(missing_module)
                         if success:
                             try:
                                 module = importlib.import_module(f'tools.{module_info.name}')
