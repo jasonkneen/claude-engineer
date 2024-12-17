@@ -55,38 +55,48 @@ async def startup_event():
         logger.error(f"Failed to initialize assistant: {str(e)}")
         raise
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+@app.post("/chat")
+async def chat(request: Request):
     """Handle chat messages."""
     try:
-        if not request.content:
+        # Parse request data
+        data = await request.json()
+        content = data.get('content')
+        
+        if not content:
             raise HTTPException(status_code=400, detail="Message content is required")
             
-        logger.info(f"Processing chat message: {request.content[:100]}...")  # Log first 100 chars
+        logger.info(f"Processing chat message: {content[:100]}...")  # Log first 100 chars
         
         try:
             # Get response from assistant
-            response = await assistant.chat(request.content)
+            response = await assistant.chat(content)
             
-            # Create response using Pydantic model
+            # Create response data
             timestamp = datetime.datetime.now()
-            return ChatResponse(
-                content=str(response) if response else "",
-                timestamp=timestamp.isoformat(),
-                id=str(int(timestamp.timestamp()))
-            )
+            response_data = {
+                "type": "message",
+                "content": str(response) if response else "",
+                "role": "assistant",
+                "timestamp": timestamp.isoformat(),
+                "id": str(int(timestamp.timestamp()))
+            }
+            
+            # Return response
+            return response_data
             
         except Exception as chat_error:
             logger.error(f"Chat error: {str(chat_error)}")
-            error_response = ChatResponse(
-                type="error",
-                content=str(chat_error),
-                timestamp=datetime.datetime.now().isoformat(),
-                id=str(int(datetime.datetime.now().timestamp()))
-            )
+            error_data = {
+                "type": "error",
+                "content": str(chat_error),
+                "role": "assistant",
+                "timestamp": datetime.datetime.now().isoformat(),
+                "id": str(int(datetime.datetime.now().timestamp()))
+            }
             return JSONResponse(
                 status_code=500,
-                content=jsonable_encoder(error_response)
+                content=error_data
             )
             
     except Exception as e:
