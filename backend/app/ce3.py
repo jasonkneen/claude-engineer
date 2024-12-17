@@ -572,11 +572,10 @@ class Assistant:
 
         try:
             # Format user message for API
-            formatted_message = {
+            self.conversation_history = [{
                 "role": "user",
                 "content": user_input
-            }
-            self.conversation_history.append(formatted_message)
+            }]
 
             try:
                 # Get completion with proper error handling
@@ -588,13 +587,13 @@ class Assistant:
                     response = await self._get_completion()
 
                 # Format assistant response
-                formatted_response = {
+                response_text = response if isinstance(response, str) else str(response)
+                self.conversation_history.append({
                     "role": "assistant",
-                    "content": response if isinstance(response, str) else str(response)
-                }
-                self.conversation_history.append(formatted_response)
+                    "content": response_text
+                })
 
-                return formatted_response["content"]
+                return response_text
             except Exception as e:
                 error_msg = f"Error in chat completion: {str(e)}"
                 self.console.print(f"[red]{error_msg}[/red]")
