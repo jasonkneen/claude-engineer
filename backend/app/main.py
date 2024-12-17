@@ -30,7 +30,11 @@ async def startup_event():
     """Initialize the assistant on startup."""
     global assistant
     assistant = Assistant()
-    await assistant.initialize()
+    try:
+        await assistant.initialize()
+    except Exception as e:
+        logger.error(f"Failed to initialize assistant: {str(e)}")
+        raise
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
