@@ -54,25 +54,23 @@ async def chat(request: Request):
             raise HTTPException(status_code=400, detail="Message content is required")
             
         logger.info(f"Processing chat message: {content[:100]}...")  # Log first 100 chars
-        response = await assistant.chat(content)
-        
-        # Ensure response is properly awaited and formatted
-        if isinstance(response, str):
-            return {
+        try:
+            # Ensure we properly await the chat response
+            response = await assistant.chat(content)
+            
+            # Convert response to string if it's not already
+            response_content = str(response) if not isinstance(response, str) else response
+            
+            # Return a properly formatted response
+            return JSONResponse(content={
                 "type": "message",
-                "content": response,
+                "content": response_content,
                 "role": "assistant",
                 "timestamp": datetime.datetime.now().isoformat()
-            }
-        else:
-            # Handle case where response might be a coroutine or other type
-            response_str = str(response)
-            return {
-                "type": "message",
-                "content": response_str,
-                "role": "assistant",
-                "timestamp": datetime.datetime.now().isoformat()
-            }
+            })
+        except Exception as chat_error:
+            logger.error(f"Chat error: {str(chat_error)}")
+            raise HTTPException(status_code=500, detail=str(chat_error))
     except Exception as e:
         logger.error(f"Error processing chat message: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
