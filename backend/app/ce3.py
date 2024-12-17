@@ -62,7 +62,7 @@ class Assistant:
                 raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
             self.client = anthropic.Anthropic(api_key=self.config.ANTHROPIC_API_KEY)
         
-        self.api_router = await APIRouter().__aenter__()
+        self.api_router = APIRouter()
         self.tools = await self._load_tools()
         self.agent_manager = AgentManagerTool(
             agent_id="manager",
