@@ -502,3 +502,57 @@ class APIRouter(AbstractContextManager):
     async def close(self):
         """Clean up resources"""
         self._executor.shutdown(wait=True)
+
+    async def handle_websocket(self, websocket: WebSocket):
+        """Handle WebSocket connection and messages"""
+        try:
+            await self.connect(websocket)
+            while True:
+                try:
+                    # Receive and parse message
+                    data = await websocket.receive_text()
+                    message = json.loads(data)
+                    
+                    # Extract message details
+                    content = message.get("content", "")
+                    role = message.get("role")
+                    voice_enabled = message.get("voice", False)
+                    
+                    # Get response with tool selection
+                    response = await self.route_request(
+                        provider="anthropic",
+                        messages=[{"role": "user", "content": content}],
+                        role=role
+                    )
+                    
+                    # Generate voice response if requested
+                    audio_data = None
+                    if voice_enabled and response.get("content"):
+                        try:
+                            audio_data = await self.voice_tool.text_to_speech(response["content"])
+                        except Exception as e:
+                            self.logger.error(f"Voice generation error: {str(e)}")
+                    
+                    # Send response
+                    await websocket.send_json({
+                        "type": "message",
+                        "content": response.get("content", ""),
+                        "role": "assistant",
+                        "audio": audio_data,
+                        "tools": response.get("tools"),
+                        "timestamp": datetime.datetime.now().isoformat()
+                    })
+                
+                except WebSocketDisconnect:
+                    self.logger.info(f"WebSocket client disconnected: {id(websocket)}")
+                    break
+                except Exception as e:
+                    self.logger.error(f"Error handling WebSocket message: {str(e)}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "content": f"Error: {str(e)}",
+                        "timestamp": datetime.datetime.now().isoformat()
+                    })
+        
+        finally:
+            self.disconnect(websocket)
