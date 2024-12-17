@@ -1,5 +1,6 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import asyncio
 from typing import List, Dict, Any
 import json
@@ -25,11 +26,10 @@ app = FastAPI(title="Claude Engineer API")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For development only
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
 
 # Store active connections
@@ -47,28 +47,49 @@ async def startup_event():
         logger.error(f"Failed to initialize assistant: {str(e)}")
         raise
 
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, WebSocket] = {}
+
+    async def connect(self, websocket: WebSocket) -> str:
+        await websocket.accept()
+        client_id = str(id(websocket))
+        self.active_connections[client_id] = websocket
+        logger.info(f"New WebSocket connection established: {client_id}")
+        return client_id
+
+    def disconnect(self, client_id: str):
+        if client_id in self.active_connections:
+            del self.active_connections[client_id]
+            logger.info(f"WebSocket connection closed: {client_id}")
+
+    async def send_message(self, client_id: str, message: str):
+        if client_id in self.active_connections:
+            await self.active_connections[client_id].send_text(message)
+
+manager = ConnectionManager()
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Handle WebSocket connections for real-time chat."""
+    client_id = None
     try:
-        # Log headers for debugging
-        logger.info("WebSocket connection headers:")
-        for header, value in websocket.headers.items():
-            logger.info(f"{header}: {value}")
+        # Log connection attempt
+        logger.info("WebSocket connection attempt")
+        logger.info("Headers:")
+        for k, v in websocket.headers.items():
+            logger.info(f"{k}: {v}")
 
-        # Accept all connections for now
-        await websocket.accept()
-        
-        client_id = str(id(websocket))
-        connections[client_id] = websocket
-        logger.info(f"New WebSocket connection established: {client_id}")
+        # Accept connection
+        client_id = await manager.connect(websocket)
         
         while True:
             try:
+                # Receive message
                 message = await websocket.receive_text()
                 logger.debug(f"Received message from {client_id}: {message}")
                 
-                # Parse the message
+                # Parse message
                 try:
                     data = json.loads(message)
                     content = data.get('content', '')
@@ -78,7 +99,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Process with Claude Engineer
                 response = await assistant.chat(content)
 
-                # Send response back
+                # Send response
                 await websocket.send_json({
                     "type": "message",
                     "content": response,
@@ -100,21 +121,8 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Error handling WebSocket connection: {str(e)}")
     finally:
-        if client_id in connections:
-            del connections[client_id]
-            logger.info(f"Cleaned up connection: {client_id}")
-
-@app.options("/ws")
-async def websocket_options(request: Request):
-    """Handle CORS preflight requests for WebSocket."""
-    return {
-        "headers": {
-            "Access-Control-Allow-Origin": "http://localhost:3000",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Allow-Credentials": "true",
-        }
-    }
+        if client_id:
+            manager.disconnect(client_id)
 
 @app.get("/health")
 async def health_check():
