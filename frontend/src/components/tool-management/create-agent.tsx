@@ -81,7 +81,7 @@ interface CreateAgentProps extends React.HTMLAttributes<HTMLDivElement> {
   className?: string
 }
 
-export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Element {
+export function CreateAgent({ className, ...props }: CreateAgentProps) {
   const [description, setDescription] = useState<string>('');
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [isCreating, setIsCreating] = useState<boolean>(false);
@@ -93,7 +93,7 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
     tools?: string[];
   }>({});
 
-  const fetchExistingAgents = async (): Promise<void> => {
+  const fetchExistingAgents = async () => {
     try {
       const response = await fetch('http://localhost:8000/agents');
       if (!response.ok) throw new Error('Failed to fetch agents');
@@ -237,19 +237,6 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
       setIsCreating(false);
     }
   };
-
-      const data = await response.json()
-      toast.success(`Agent created successfully with ID: ${data.agent_id}`)
-      
-      setDescription('')
-      setParsedAgent({})
-      void fetchExistingAgents()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to create agent')
-    } finally {
-      setIsCreating(false)
-    }
-  }
 
   return (
     <Card className={cn("w-full max-w-2xl mx-auto", className)} {...props}>
