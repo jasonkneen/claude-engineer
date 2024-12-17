@@ -12,20 +12,20 @@ declare global {
   }
 }
 
-type SpeechRecognitionResult = {
-  transcript: string;
-  confidence: number;
+interface SpeechRecognitionResult {
+  readonly length: number;
+  [index: number]: {
+    readonly transcript: string;
+    readonly confidence: number;
+  };
 }
 
-type SpeechRecognitionResultList = {
-  length: number;
-  item(index: number): SpeechRecognitionResult[];
-  [index: number]: SpeechRecognitionResult[];
-}
-
-type SpeechRecognitionEvent = {
-  results: SpeechRecognitionResultList;
-  resultIndex: number;
+interface SpeechRecognitionEvent {
+  readonly resultIndex: number;
+  readonly results: {
+    readonly length: number;
+    [index: number]: SpeechRecognitionResult;
+  };
 }
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -131,10 +131,10 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
         const recognition = new SpeechRecognition()
         recognition.continuous = true
         recognition.onresult = (event: SpeechRecognitionEvent) => {
-          const lastResult = event.results[event.results.length - 1];
-          if (lastResult && lastResult[0]) {
-            const transcript = lastResult[0].transcript;
-            setDescription(prev => prev + ' ' + transcript);
+          const results = event.results;
+          const lastResult = results[results.length - 1];
+          if (lastResult?.[0]?.transcript) {
+            setDescription(prev => prev + ' ' + lastResult[0].transcript);
           }
         }
         recognition.start()
