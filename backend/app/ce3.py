@@ -448,30 +448,34 @@ class Assistant:
 
             try:
                 # Make API request and await response
-                response = await self.api_router.route_request(
+                api_response = await self.api_router.route_request(
                     provider=Config.DEFAULT_PROVIDER,
                     messages=formatted_messages,
                     config=config
                 )
 
                 # Handle token usage if available
-                if isinstance(response, dict) and 'usage' in response:
-                    usage = response.get('usage', {})
+                if isinstance(api_response, dict) and 'usage' in api_response:
+                    usage = api_response.get('usage', {})
                     input_tokens = int(usage.get('input_tokens', 0))
                     output_tokens = int(usage.get('output_tokens', 0))
                     self.total_tokens_used += (input_tokens + output_tokens)
                     self._display_token_usage(usage)
 
                 # Extract and format content
-                if isinstance(response, dict):
-                    if 'content' in response:
-                        return str(response['content'])
-                    elif 'error' in response:
-                        return f"Error: {response['error']}"
+                if isinstance(api_response, dict):
+                    if 'content' in api_response:
+                        content = api_response['content']
+                        return str(content) if content else "No response content"
+                    elif 'error' in api_response:
+                        return f"Error: {api_response['error']}"
                     else:
-                        return str(response.get('content', 'No response content'))
+                        return str(api_response.get('content', 'No response content'))
                 
-                return str(response) if response else "No response"
+                # Handle non-dict response
+                if api_response is None:
+                    return "No response received"
+                return str(api_response)
 
             except Exception as e:
                 error_msg = f"API Error: {str(e)}"
