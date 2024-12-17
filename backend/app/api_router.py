@@ -298,9 +298,6 @@ class APIRouter(AbstractContextManager):
                 "model": config.model,
                 "role": "assistant"
             }
-        except Exception as e:
-            self.logger.error(f"OpenAI API error: {str(e)}")
-            raise
 
     async def close(self):
         """Clean up resources"""
