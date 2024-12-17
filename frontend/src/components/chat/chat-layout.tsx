@@ -76,7 +76,14 @@ export function ChatLayout({
   }, [])
 
   const handleSubmit = (content: string) => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) return
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      console.error('WebSocket is not connected')
+      return
+    }
+
+    if (!content.trim()) {
+      return
+    }
 
     const newMessage: Message = {
       id: Date.now().toString(),
@@ -87,7 +94,13 @@ export function ChatLayout({
 
     setMessages(prev => [...prev, newMessage])
     setIsLoading(true)
-    socket.send(JSON.stringify({ content }))
+    
+    try {
+      socket.send(JSON.stringify({ content: content.trim() }))
+    } catch (error) {
+      console.error('Error sending message:', error)
+      setIsLoading(false)
+    }
   }
 
   return (
