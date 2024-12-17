@@ -41,15 +41,12 @@ MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
 # Ensure upload directory exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Ensure upload directory exists
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-
 # Initialize globals
 assistant = None
 dark_mode = False
 agent_config = {}
 
-@app.before_serving
+@app.on_event("startup")
 async def startup():
     """Initialize assistant and tools before serving."""
     global assistant
