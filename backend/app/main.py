@@ -21,12 +21,24 @@ app = FastAPI(title="Claude Engineer API")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "ws://localhost:3000"],
+    allow_origins=["*"],  # In production, specify exact origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    allow_websockets=True
 )
+
+# WebSocket-specific CORS headers
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """Handle WebSocket connections for real-time chat."""
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+    }
+    await websocket.accept(headers=headers)
+    client_id = str(id(websocket))
+    connections[client_id] = websocket
 
 # Store active connections
 connections: Dict[str, WebSocket] = {}
