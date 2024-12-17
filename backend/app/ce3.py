@@ -129,7 +129,7 @@ class Assistant:
             for tool_name in core_tools:
                 try:
                     module = importlib.import_module(f'.tools.{tool_name}', package=__package__)
-                    self._extract_tools_from_module(module, tools)
+                    await self._extract_tools_from_module(module, tools)
                 except ImportError as e:
                     self.console.print(f"[red]Failed to load core tool {tool_name}: {str(e)}[/red]")
 
