@@ -29,33 +29,49 @@ export function ChatLayout({
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:8084/ws')
-    setSocket(ws)
+    let reconnectTimer: NodeJS.Timeout;
+    
+    const connectWebSocket = () => {
+      const ws = new WebSocket('ws://localhost:8084/ws')
+      setSocket(ws)
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      if (data.type === 'message') {
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          content: data.content,
-          role: data.role,
-          timestamp: new Date().toISOString()
-        }])
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data)
+        if (data.type === 'message') {
+          setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            content: data.content,
+            role: data.role,
+            timestamp: new Date().toISOString()
+          }])
+          setIsLoading(false)
+        }
+      }
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error)
         setIsLoading(false)
+      }
+
+      ws.onclose = () => {
+        console.log('WebSocket connection closed, attempting to reconnect...')
+        reconnectTimer = setTimeout(connectWebSocket, 3000)
+      }
+
+      ws.onopen = () => {
+        console.log('WebSocket connection established')
       }
     }
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error)
-      setIsLoading(false)
-    }
-
-    ws.onclose = () => {
-      console.log('WebSocket connection closed')
-    }
+    connectWebSocket()
 
     return () => {
-      ws.close()
+      if (socket) {
+        socket.close()
+      }
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+      }
     }
   }, [])
 
