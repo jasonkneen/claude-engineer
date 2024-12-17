@@ -1,7 +1,6 @@
 "use client"
 
 import React, { useEffect, useState } from 'react'
-import { io, Socket } from 'socket.io-client'
 import { ChatContainer } from './chat-container'
 import { ChatInput } from './chat-input'
 import { cn } from '@/lib/utils'
@@ -27,39 +26,58 @@ export function ChatLayout({
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [socket, setSocket] = useState<WebSocket | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
     let reconnectTimer: NodeJS.Timeout;
     
     const connectWebSocket = () => {
-      const ws = new WebSocket('ws://localhost:8085/ws')
-      setSocket(ws)
+      try {
+        const ws = new WebSocket('ws://localhost:8085/ws', [], {
+          headers: {
+            'Origin': 'http://localhost:3000'
+          }
+        })
+        setSocket(ws)
 
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data)
-        if (data.type === 'message') {
-          setMessages(prev => [...prev, {
-            id: Date.now().toString(),
-            content: data.content,
-            role: data.role,
-            timestamp: new Date().toISOString()
-          }])
-          setIsLoading(false)
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            if (data.type === 'message') {
+              setMessages(prev => [...prev, {
+                id: Date.now().toString(),
+                content: data.content,
+                role: data.role,
+                timestamp: new Date().toISOString()
+              }])
+              setIsLoading(false)
+            }
+          } catch (error) {
+            console.error('Error parsing message:', error)
+            setIsLoading(false)
+          }
         }
-      }
 
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
-        setIsLoading(false)
-      }
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error)
+          setIsLoading(false)
+          setIsConnected(false)
+        }
 
-      ws.onclose = () => {
-        console.log('WebSocket connection closed, attempting to reconnect...')
+        ws.onclose = () => {
+          console.log('WebSocket connection closed, attempting to reconnect...')
+          setIsConnected(false)
+          reconnectTimer = setTimeout(connectWebSocket, 3000)
+        }
+
+        ws.onopen = () => {
+          console.log('WebSocket connection established')
+          setIsConnected(true)
+        }
+      } catch (error) {
+        console.error('Error creating WebSocket:', error)
+        setIsConnected(false)
         reconnectTimer = setTimeout(connectWebSocket, 3000)
-      }
-
-      ws.onopen = () => {
-        console.log('WebSocket connection established')
       }
     }
 
@@ -108,7 +126,11 @@ export function ChatLayout({
       <div className="flex-1 overflow-hidden">
         <ChatContainer messages={messages} />
       </div>
-      <ChatInput onSubmit={handleSubmit} isLoading={isLoading} />
+      <ChatInput 
+        onSubmit={handleSubmit} 
+        isLoading={isLoading} 
+        disabled={!isConnected}
+      />
     </div>
   )
 }
