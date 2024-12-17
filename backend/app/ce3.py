@@ -440,13 +440,20 @@ class Assistant:
                 )
             )
 
-            # Ensure response is properly handled
-            if isinstance(response, dict) and 'content' in response:
-                return response['content']
-            elif isinstance(response, str):
-                return response
-            else:
-                return str(response)
+            # Update token usage based on response usage
+            if isinstance(response, dict) and 'usage' in response:
+                usage = response['usage']
+                message_tokens = usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
+                self.total_tokens_used += message_tokens
+                self._display_token_usage(usage)
+
+            # Extract content from response
+            if isinstance(response, dict):
+                content = response.get('content', '')
+                if isinstance(content, (list, dict)):
+                    return str(content)
+                return content
+            return str(response)
 
             # Update token usage based on response usage
             if hasattr(response, 'usage') and response.usage:
