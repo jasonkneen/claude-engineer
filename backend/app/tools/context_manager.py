@@ -1,4 +1,4 @@
-from tools.agent_base import AgentBaseTool, AgentRole
+from .agent_base import AgentBaseTool, AgentRole
 from typing import Dict, Any, Optional, List
 import json
 import logging
