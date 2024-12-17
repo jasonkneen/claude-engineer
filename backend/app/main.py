@@ -50,12 +50,13 @@ async def startup_event():
 async def websocket_endpoint(websocket: WebSocket):
     """Handle WebSocket connections for real-time chat."""
     try:
-        # Check origin
-        origin = websocket.headers.get("origin", "")
-        if origin != "http://localhost:3000":
-            logger.warning(f"Rejected WebSocket connection from origin: {origin}")
-            await websocket.close(code=1008)  # Policy violation
-            return
+        # Log headers for debugging
+        logger.info("WebSocket connection headers:")
+        for header, value in websocket.headers.items():
+            logger.info(f"{header}: {value}")
+
+        # Accept all connections for now
+        await websocket.accept()
 
         await websocket.accept()
         
