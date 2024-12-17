@@ -132,9 +132,16 @@ class APIRouter(AbstractContextManager):
                     messages=messages
                 )
             )
+            
+            # Extract content from response
+            content = response.content[0].text if isinstance(response.content, list) else response.content
+            
             return {
-                "content": response.content,
-                "usage": response.usage,
+                "content": content,
+                "usage": {
+                    "input_tokens": getattr(response.usage, "input_tokens", 0),
+                    "output_tokens": getattr(response.usage, "output_tokens", 0)
+                },
                 "model": response.model,
                 "role": "assistant"
             }
