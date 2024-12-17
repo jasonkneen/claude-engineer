@@ -6,9 +6,22 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 import os
 import json
+import datetime
 from dataclasses import dataclass
 from enum import Enum
 from contextlib import AbstractContextManager
+from typing import Dict, Any, Optional, List, Set, Tuple
+
+def get_tools_for_role(role: str) -> List[str]:
+    """Get recommended tools for a given role"""
+    role_tools = {
+        "management": ["agent_manager", "context_manager"],
+        "context": ["context_manager", "file_reader"],
+        "tracker": ["context_manager", "file_reader", "file_writer"],
+        "test": ["test_agent"],
+        "custom": []
+    }
+    return role_tools.get(role.lower(), [])
 from fastapi import WebSocket, WebSocketDisconnect
 from typing import List, Dict, Any, Optional, Set
 from .tools.agent_manager import AgentManagerTool
