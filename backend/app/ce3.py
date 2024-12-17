@@ -169,8 +169,9 @@ class Assistant:
                     self.console.print(f"[red]Error loading module {module_info.name}:[/red] {str(mod_err)}")
         except Exception as overall_err:
             self.console.print(f"[red]Error in tool loading process:[/red] {str(overall_err)}")
+            return []
 
-        return tools
+        return tools if tools else []
 
     def _parse_missing_dependency(self, error_str: str) -> str:
         """
