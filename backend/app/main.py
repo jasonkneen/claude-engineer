@@ -27,19 +27,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# WebSocket-specific CORS headers
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """Handle WebSocket connections for real-time chat."""
-    headers = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "*",
-    }
-    await websocket.accept(headers=headers)
-    client_id = str(id(websocket))
-    connections[client_id] = websocket
-
 # Store active connections
 connections: Dict[str, WebSocket] = {}
 
