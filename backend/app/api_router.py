@@ -99,21 +99,29 @@ class APIRouter(AbstractContextManager):
             else:
                 raise ValueError(f"Unsupported provider: {provider}")
 
-            # Ensure response is properly formatted
+            # Convert response to a simple dict format
+            response_dict = {
+                "content": "",
+                "role": "assistant",
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+                "model": "unknown"
+            }
+
+            # Update with actual values if available
             if isinstance(response, dict):
-                return {
-                    "content": response.get("content", ""),
-                    "role": response.get("role", "assistant"),
-                    "usage": response.get("usage", {"input_tokens": 0, "output_tokens": 0}),
-                    "model": response.get("model", "unknown")
-                }
+                response_dict.update({
+                    "content": str(response.get("content", "")),
+                    "role": str(response.get("role", "assistant")),
+                    "usage": {
+                        "input_tokens": int(response.get("usage", {}).get("input_tokens", 0)),
+                        "output_tokens": int(response.get("usage", {}).get("output_tokens", 0))
+                    },
+                    "model": str(response.get("model", "unknown"))
+                })
             else:
-                return {
-                    "content": str(response),
-                    "role": "assistant",
-                    "usage": {"input_tokens": 0, "output_tokens": 0},
-                    "model": "unknown"
-                }
+                response_dict["content"] = str(response)
+
+            return response_dict
 
         except Exception as e:
             self.logger.error(f"Error routing request: {str(e)}")
