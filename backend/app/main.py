@@ -57,8 +57,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
         # Accept all connections for now
         await websocket.accept()
-
-        await websocket.accept()
         
         client_id = str(id(websocket))
         connections[client_id] = websocket
