@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ToolList } from './tool-list'
 import { toast } from 'sonner'
-import { cn } from '../../lib/utils'
+import { cn } from '@/lib/utils'
 
 type AgentRole = {
   value: string
