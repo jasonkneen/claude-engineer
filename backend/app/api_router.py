@@ -96,32 +96,41 @@ class APIRouter(AbstractContextManager):
             for msg in messages:
                 if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
                     formatted_messages.append({
-                        'role': msg['role'],
-                        'content': msg['content']
+                        'role': str(msg['role']),
+                        'content': str(msg['content'])
                     })
 
             # Get response from appropriate provider
-            if provider_enum == APIProvider.ANTHROPIC:
-                response = await self._anthropic_request(formatted_messages, config)
-            elif provider_enum == APIProvider.OPENAI:
-                response = await self._openai_request(formatted_messages, config)
-            else:
-                raise ValueError(f"Unsupported provider: {provider}")
+            try:
+                if provider_enum == APIProvider.ANTHROPIC:
+                    response = await self._anthropic_request(formatted_messages, config)
+                elif provider_enum == APIProvider.OPENAI:
+                    response = await self._openai_request(formatted_messages, config)
+                else:
+                    raise ValueError(f"Unsupported provider: {provider}")
 
-            # Ensure response is properly formatted
-            if isinstance(response, dict):
+                # Ensure response is properly formatted
+                if isinstance(response, dict):
+                    return {
+                        "content": str(response.get("content", "")),
+                        "role": "assistant",
+                        "usage": {
+                            "input_tokens": int(response.get("usage", {}).get("input_tokens", 0)),
+                            "output_tokens": int(response.get("usage", {}).get("output_tokens", 0))
+                        },
+                        "model": str(response.get("model", "unknown"))
+                    }
+                else:
+                    return {
+                        "content": str(response),
+                        "role": "assistant",
+                        "usage": {"input_tokens": 0, "output_tokens": 0},
+                        "model": "unknown"
+                    }
+            except Exception as provider_error:
+                self.logger.error(f"Provider error: {str(provider_error)}")
                 return {
-                    "content": str(response.get("content", "")),
-                    "role": "assistant",
-                    "usage": {
-                        "input_tokens": int(response.get("usage", {}).get("input_tokens", 0)),
-                        "output_tokens": int(response.get("usage", {}).get("output_tokens", 0))
-                    },
-                    "model": str(response.get("model", "unknown"))
-                }
-            else:
-                return {
-                    "content": str(response),
+                    "content": f"Error: {str(provider_error)}",
                     "role": "assistant",
                     "usage": {"input_tokens": 0, "output_tokens": 0},
                     "model": "unknown"
