@@ -79,7 +79,7 @@ class Assistant:
         if hasattr(self, 'agent_manager'):
             await self.agent_manager.__aexit__(exc_type, exc_val, exc_tb)
 
-    def _execute_uv_install(self, package_name: str) -> bool:
+    async def _execute_uv_install(self, package_name: str) -> bool:
         """
         Execute the uvpackagemanager tool directly to install the missing package.
         Returns True if installation seems successful (no errors in output), otherwise False.
@@ -91,7 +91,7 @@ class Assistant:
                 "packages": [package_name]
             }
 
-        result = self._execute_tool(ToolUseMock())
+        result = await self._execute_tool(ToolUseMock())
         if "Error" not in result and "failed" not in result.lower():
             self.console.print("[green]The package was installed successfully.[/green]")
             return True
