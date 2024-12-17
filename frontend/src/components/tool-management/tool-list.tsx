@@ -5,8 +5,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { ScrollArea } from '../ui/scroll-area'
 import { Checkbox } from '../ui/checkbox'
 import { Badge } from '../ui/badge'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 import { StarIcon } from 'lucide-react'
+
+type CategoryInfo = {
+  label: string
+  description: string
+}
+
+type ToolCategories = {
+  [key in 'agent' | 'context' | 'file' | 'web' | 'voice' | 'test' | 'other']: CategoryInfo
+}
 
 interface Tool {
   name: string
