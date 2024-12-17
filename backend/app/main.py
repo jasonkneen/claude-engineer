@@ -72,7 +72,7 @@ async def chat(request: Request):
             # Get response from assistant
             response = await assistant.chat(content)
             
-            # Create response data
+            # Create response data with primitive types
             timestamp = datetime.datetime.now()
             response_data = {
                 "type": "message",
@@ -82,8 +82,9 @@ async def chat(request: Request):
                 "id": str(int(timestamp.timestamp()))
             }
             
-            # Return response
-            return response_data
+            # Convert to JSON-compatible format and return
+            json_compatible = jsonable_encoder(response_data)
+            return JSONResponse(content=json_compatible)
             
         except Exception as chat_error:
             logger.error(f"Chat error: {str(chat_error)}")
@@ -94,9 +95,10 @@ async def chat(request: Request):
                 "timestamp": datetime.datetime.now().isoformat(),
                 "id": str(int(datetime.datetime.now().timestamp()))
             }
+            json_compatible = jsonable_encoder(error_data)
             return JSONResponse(
                 status_code=500,
-                content=error_data
+                content=json_compatible
             )
             
     except Exception as e:
