@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import { ChatContainer } from './chat-container'
 import { ChatInput } from './chat-input'
 import { cn } from '@/lib/utils'
@@ -18,83 +18,15 @@ interface ChatLayoutProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export function ChatLayout({ 
-  apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+  apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8085',
   initialMessages = [],
   className,
   ...props 
 }: ChatLayoutProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
-  const [socket, setSocket] = useState<WebSocket | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [isConnected, setIsConnected] = useState(false)
 
-  useEffect(() => {
-    let reconnectTimer: NodeJS.Timeout;
-    
-    const connectWebSocket = () => {
-      try {
-        const ws = new WebSocket('ws://localhost:8085/ws')
-        setSocket(ws)
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data)
-            if (data.type === 'message') {
-              setMessages(prev => [...prev, {
-                id: Date.now().toString(),
-                content: data.content,
-                role: data.role,
-                timestamp: new Date().toISOString()
-              }])
-              setIsLoading(false)
-            }
-          } catch (error) {
-            console.error('Error parsing message:', error)
-            setIsLoading(false)
-          }
-        }
-
-        ws.onerror = (error) => {
-          console.error('WebSocket error:', error)
-          setIsLoading(false)
-          setIsConnected(false)
-        }
-
-        ws.onclose = () => {
-          console.log('WebSocket connection closed, attempting to reconnect...')
-          setIsConnected(false)
-          reconnectTimer = setTimeout(connectWebSocket, 3000)
-        }
-
-        ws.onopen = () => {
-          console.log('WebSocket connection established')
-          setIsConnected(true)
-        }
-      } catch (error) {
-        console.error('Error creating WebSocket:', error)
-        setIsConnected(false)
-        reconnectTimer = setTimeout(connectWebSocket, 3000)
-      }
-    }
-
-    connectWebSocket()
-
-    return () => {
-      if (socket) {
-        socket.close()
-      }
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer)
-      }
-    }
-  }, [])
-
-  const handleSubmit = (content: string) => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      console.error('WebSocket is not connected')
-      return
-    }
-
+  const handleSubmit = async (content: string) => {
     if (!content.trim()) {
       return
     }
@@ -110,9 +42,35 @@ export function ChatLayout({
     setIsLoading(true)
     
     try {
-      socket.send(JSON.stringify({ content: content.trim() }))
+      const response = await fetch(`${apiUrl}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content: content.trim() })
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        content: data.content,
+        role: data.role,
+        timestamp: data.timestamp
+      }])
     } catch (error) {
       console.error('Error sending message:', error)
+      // Optionally add error message to chat
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        content: 'An error occurred while sending your message. Please try again.',
+        role: 'assistant',
+        timestamp: new Date().toISOString()
+      }])
+    } finally {
       setIsLoading(false)
     }
   }
@@ -125,7 +83,6 @@ export function ChatLayout({
       <ChatInput 
         onSubmit={handleSubmit} 
         isLoading={isLoading} 
-        disabled={!isConnected}
       />
     </div>
   )
