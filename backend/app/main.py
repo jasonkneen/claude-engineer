@@ -5,6 +5,11 @@ from typing import List, Dict, Any
 import json
 import sys
 import os
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Add the backend directory to PYTHONPATH
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -29,9 +34,10 @@ connections: Dict[str, WebSocket] = {}
 async def startup_event():
     """Initialize the assistant on startup."""
     global assistant
-    assistant = Assistant()
     try:
+        assistant = Assistant()
         await assistant.initialize()
+        logger.info("Assistant initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize assistant: {str(e)}")
         raise
@@ -66,7 +72,7 @@ async def websocket_endpoint(websocket: WebSocket):
             })
 
     except Exception as e:
-        print(f"Error handling WebSocket: {str(e)}")
+        logger.error(f"Error handling WebSocket: {str(e)}")
     finally:
         # Clean up connection
         if client_id in connections:
