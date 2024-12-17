@@ -207,10 +207,80 @@ class APIRouter(AbstractContextManager):
         Returns:
             API response as dict
         """
-        """Route request to specified provider.
+        try:
+            # Get tools for role if specified
+            tools = []
+            if role:
+                tools = get_tools_for_role(role)
+                self.logger.info(f"Selected tools for role {role}: {tools}")
 
-        Args:
-            provider: Provider name ('anthropic' or 'openai')
+            # Validate and prepare provider
+            provider_enum = APIProvider(provider.lower())
+            if config is None:
+                config = self._get_default_config(provider_enum)
+                if tools:
+                    config.tools = [{"type": "function", "function": {"name": t}} for t in tools]
+
+            # Format messages for API request
+            formatted_messages = []
+            for msg in messages:
+                if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
+                    formatted_messages.append({
+                        'role': str(msg['role']),
+                        'content': str(msg['content'])
+                    })
+
+            # Get response from appropriate provider
+            try:
+                # Make API request
+                if provider_enum == APIProvider.ANTHROPIC:
+                    api_response = await self._anthropic_request(formatted_messages, config)
+                elif provider_enum == APIProvider.OPENAI:
+                    api_response = await self._openai_request(formatted_messages, config)
+                else:
+                    raise ValueError(f"Unsupported provider: {provider}")
+
+                # Format response
+                if isinstance(api_response, dict):
+                    content = str(api_response.get("content", ""))
+                    usage = api_response.get("usage", {})
+                    model = str(api_response.get("model", "unknown"))
+                else:
+                    content = str(api_response)
+                    usage = {"input_tokens": 0, "output_tokens": 0}
+                    model = "unknown"
+
+                # Return formatted response
+                return {
+                    "content": content,
+                    "role": "assistant",
+                    "usage": {
+                        "input_tokens": int(usage.get("input_tokens", 0)),
+                        "output_tokens": int(usage.get("output_tokens", 0))
+                    },
+                    "model": model,
+                    "tools": tools if tools else None
+                }
+
+            except Exception as provider_error:
+                self.logger.error(f"Provider error: {str(provider_error)}")
+                return {
+                    "content": f"Error: {str(provider_error)}",
+                    "role": "assistant",
+                    "usage": {"input_tokens": 0, "output_tokens": 0},
+                    "model": "unknown",
+                    "tools": None
+                }
+
+        except Exception as e:
+            self.logger.error(f"Error routing request: {str(e)}")
+            return {
+                "content": f"Error: {str(e)}",
+                "role": "assistant",
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+                "model": "unknown",
+                "tools": None
+            }
             messages: List of conversation messages
             config: Optional API configuration
 
