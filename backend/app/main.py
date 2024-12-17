@@ -115,8 +115,6 @@ async def chat(request: Request):
             status_code=500,
             content=jsonable_encoder(error_data)
         )
-            content=jsonable_encoder(error_response)
-        )
 
 @app.get("/health")
 async def health_check():
