@@ -123,13 +123,13 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
   }
 
   return (
-    <Card className={cn("w-full max-w-2xl mx-auto", className)}>
+    <Card className={cn("w-full max-w-2xl mx-auto", className)} {...props}>
       <CardHeader>
         <CardTitle>Agent Management</CardTitle>
         <CardDescription>Create and manage your AI agents</CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs defaultValue={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="create">Create Agent</TabsTrigger>
             <TabsTrigger value="existing">Existing Agents</TabsTrigger>
@@ -137,18 +137,18 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
 
           <TabsContent value="create" className="space-y-6">
             <div className="space-y-6">
-        <div className="space-y-2">
-          <label htmlFor="name" className="text-sm font-medium">
-            Agent Name
-          </label>
-          <Input
-            id="name"
-            type="text"
-            placeholder="Enter agent name"
-            value={name}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-          />
-        </div>
+              <div className="space-y-2">
+                <label htmlFor="name" className="text-sm font-medium">
+                  Agent Name
+                </label>
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="Enter agent name"
+                  value={name}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
+                />
+              </div>
               
               <div className="space-y-2">
                 <label className="text-sm font-medium">
