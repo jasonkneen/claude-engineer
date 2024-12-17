@@ -228,12 +228,12 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logging.error(f"WebSocket connection error: {str(e)}")
 
-@app.post("/chat")
-async def chat(message: dict):
-    """Legacy HTTP endpoint for chat."""
+@app.post("/chat", response_model=ChatResponse)
+async def chat(message: ChatMessage):
+    """Chat endpoint with proper request/response models."""
     try:
-        message_text = message.get('message', '')
-        image_data = message.get('image')  # Get the base64 image data
+        message_text = message.message
+        image_data = message.image
 
         if image_data:
             message_content = [
