@@ -289,11 +289,18 @@ async def chat(message: ChatMessage):
             detail=f"Error processing chat request: {str(e)}"
         )
 
-@app.route('/upload', methods=['POST'])
-async def upload_file():
+class FileUploadResponse(BaseModel):
+    success: bool
+    image_data: Optional[str] = None
+    media_type: Optional[str] = None
+    error: Optional[str] = None
+
+@app.post('/upload', response_model=FileUploadResponse)
+async def upload_file(file: UploadFile = File(...)):
+    """Handle file uploads with proper response model."""
     try:
-        if 'file' not in await request.files:
-            return jsonify({'error': 'No file part'}), 400
+        if not file:
+            raise HTTPException(status_code=400, detail="No file uploaded")
     
         file = (await request.files)['file']
         if file.filename == '':
