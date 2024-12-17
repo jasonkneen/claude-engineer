@@ -24,7 +24,7 @@ interface Tool {
   category?: string
 }
 
-const TOOL_CATEGORIES = {
+const TOOL_CATEGORIES: ToolCategories = {
   'agent': { label: 'Agent Management', description: 'Tools for managing and controlling agents' },
   'context': { label: 'Context Management', description: 'Tools for handling context and state' },
   'file': { label: 'File Operations', description: 'Tools for file system operations' },
@@ -32,7 +32,7 @@ const TOOL_CATEGORIES = {
   'voice': { label: 'Voice & Audio', description: 'Tools for voice and audio processing' },
   'test': { label: 'Testing', description: 'Tools for testing and validation' },
   'other': { label: 'Other Tools', description: 'Additional utility tools' }
-}
+} as const
 
 function getToolCategory(toolName: string): string {
   if (toolName.includes('agent')) return 'agent'
