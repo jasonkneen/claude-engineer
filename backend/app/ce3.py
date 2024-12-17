@@ -425,35 +425,37 @@ class Assistant:
         """
         try:
             # Route request through API router and await the response
-            response = await self.api_router.route_request(
-                provider=Config.DEFAULT_PROVIDER,
-                messages=self.conversation_history,
-                config=APIConfig(
-                    model=Config.MODEL,
-                    max_tokens=min(
-                        Config.MAX_TOKENS,
-                        Config.MAX_CONVERSATION_TOKENS - self.total_tokens_used
-                    ),
-                    temperature=self.temperature,
-                    tools=self.tools,
-                    system=f"{SystemPrompts.DEFAULT}\n\n{SystemPrompts.TOOL_USAGE}"
+            try:
+                response = await self.api_router.route_request(
+                    provider=Config.DEFAULT_PROVIDER,
+                    messages=[{"role": "user", "content": message} for message in self.conversation_history],
+                    config=APIConfig(
+                        model=Config.MODEL,
+                        max_tokens=min(
+                            Config.MAX_TOKENS,
+                            Config.MAX_CONVERSATION_TOKENS - self.total_tokens_used
+                        ),
+                        temperature=self.temperature,
+                        tools=self.tools,
+                        system=f"{SystemPrompts.DEFAULT}\n\n{SystemPrompts.TOOL_USAGE}"
+                    )
                 )
-            )
 
-            # Update token usage based on response usage
-            if isinstance(response, dict) and 'usage' in response:
-                usage = response['usage']
-                message_tokens = usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
-                self.total_tokens_used += message_tokens
-                self._display_token_usage(usage)
+                # Handle token usage
+                if isinstance(response, dict) and 'usage' in response:
+                    usage = response['usage']
+                    message_tokens = usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
+                    self.total_tokens_used += message_tokens
+                    self._display_token_usage(usage)
 
-            # Extract content from response
-            if isinstance(response, dict):
-                content = response.get('content', '')
-                if isinstance(content, (list, dict)):
-                    return str(content)
-                return content
-            return str(response)
+                # Extract and format content
+                if isinstance(response, dict):
+                    content = response.get('content', '')
+                    return str(content) if content else "No response content"
+                return str(response)
+            except Exception as e:
+                self.console.print(f"[red]Error in completion:[/red] {str(e)}")
+                return f"Error: {str(e)}"
 
             # Update token usage based on response usage
             if hasattr(response, 'usage') and response.usage:
