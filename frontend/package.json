@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@floating-ui/dom": "^1.6.12",
+    "@floating-ui/react-dom": "^2.1.2",
     "@radix-ui/react-accordion": "^1.2.2",
     "@radix-ui/react-alert-dialog": "^1.1.4",
     "@radix-ui/react-aspect-ratio": "^1.1.1",
