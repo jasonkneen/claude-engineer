@@ -56,12 +56,23 @@ async def chat(request: Request):
         logger.info(f"Processing chat message: {content[:100]}...")  # Log first 100 chars
         response = await assistant.chat(content)
         
-        return {
-            "type": "message",
-            "content": response,
-            "role": "assistant",
-            "timestamp": datetime.datetime.now().isoformat()
-        }
+        # Ensure response is properly awaited and formatted
+        if isinstance(response, str):
+            return {
+                "type": "message",
+                "content": response,
+                "role": "assistant",
+                "timestamp": datetime.datetime.now().isoformat()
+            }
+        else:
+            # Handle case where response might be a coroutine or other type
+            response_str = str(response)
+            return {
+                "type": "message",
+                "content": response_str,
+                "role": "assistant",
+                "timestamp": datetime.datetime.now().isoformat()
+            }
     except Exception as e:
         logger.error(f"Error processing chat message: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
