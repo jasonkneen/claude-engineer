@@ -33,11 +33,7 @@ export function ChatLayout({
     
     const connectWebSocket = () => {
       try {
-        const ws = new WebSocket('ws://localhost:8085/ws', [], {
-          headers: {
-            'Origin': 'http://localhost:3000'
-          }
-        })
+        const ws = new WebSocket('ws://localhost:8085/ws')
         setSocket(ws)
 
         ws.onmessage = (event) => {
