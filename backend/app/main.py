@@ -9,7 +9,7 @@ import os
 # Add the backend directory to PYTHONPATH
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ce3 import Assistant
+from app.ce3 import Assistant
 
 app = FastAPI(title="Claude Engineer API")
 
@@ -74,4 +74,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
