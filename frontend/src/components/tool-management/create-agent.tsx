@@ -11,7 +11,14 @@ import { ToolList } from './tool-list'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
-const AGENT_ROLES = [
+type AgentRole = {
+  value: string
+  label: string
+  description: string
+  recommendedTools: string[]
+}
+
+const AGENT_ROLES: AgentRole[] = [
   { 
     value: 'test', 
     label: 'Test Agent',
@@ -46,36 +53,35 @@ interface Agent {
 }
 
 interface CreateAgentProps extends React.HTMLAttributes<HTMLDivElement> {
-  className?: string;
+  className?: string
 }
 
 export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Element {
-  const [name, setName] = useState('')
-  const [role, setRole] = useState('')
+  const [name, setName] = useState<string>('')
+  const [role, setRole] = useState<string>('')
   const [selectedTools, setSelectedTools] = useState<string[]>([])
-  const [isCreating, setIsCreating] = useState(false)
+  const [isCreating, setIsCreating] = useState<boolean>(false)
   const [existingAgents, setExistingAgents] = useState<Agent[]>([])
-  const [activeTab, setActiveTab] = useState('create')
+  const [activeTab, setActiveTab] = useState<string>('create')
 
   useEffect(() => {
-    fetchExistingAgents()
+    void fetchExistingAgents()
   }, [])
 
   useEffect(() => {
     if (role) {
       const selectedRole = AGENT_ROLES.find(r => r.value === role)
-      if (selectedRole && selectedRole.recommendedTools.length > 0) {
+      if (selectedRole?.recommendedTools.length) {
         setSelectedTools(selectedRole.recommendedTools)
       }
     }
   }, [role])
 
-  const fetchExistingAgents = async () => {
+  const fetchExistingAgents = async (): Promise<void> => {
     try {
       const response = await fetch('http://localhost:8000/agents')
       if (!response.ok) throw new Error('Failed to fetch agents')
       const data = await response.json()
-      // Ensure data is an array
       setExistingAgents(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Error fetching agents:', error)
@@ -84,7 +90,7 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
     }
   }
 
-  const handleCreateAgent = async () => {
+  const handleCreateAgent = async (): Promise<void> => {
     if (!name || !role || selectedTools.length === 0) {
       toast.error('Please fill in all fields and select at least one tool')
       return
@@ -111,10 +117,10 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
       const data = await response.json()
       toast.success(`Agent created successfully with ID: ${data.agent_id}`)
       
-      // Reset form
       setName('')
       setRole('')
       setSelectedTools([])
+      void fetchExistingAgents()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create agent')
     } finally {
@@ -205,8 +211,7 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
                     </div>
                   </CardContent>
                 </Card>
-              ))}
-              {existingAgents.length === 0 && (
+              )) : (
                 <div className="text-center text-muted-foreground py-8">
                   No agents created yet
                 </div>
