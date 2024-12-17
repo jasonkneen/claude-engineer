@@ -29,7 +29,7 @@ export function ChatLayout({
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:8000/ws')
+    const ws = new WebSocket('ws://localhost:8084/ws')
     setSocket(ws)
 
     ws.onmessage = (event) => {
