@@ -158,7 +158,10 @@ export function CreateAgent() {
           </Select>
         </div>
 
-        <ToolList onToolSelect={setSelectedTools} />
+        <ToolList 
+          onToolSelect={setSelectedTools} 
+          recommendedTools={role ? AGENT_ROLES.find(r => r.value === role)?.recommendedTools || [] : []}
+        />
       </div>
       <div className="mt-6">
         <Button 
