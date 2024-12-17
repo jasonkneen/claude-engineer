@@ -91,10 +91,29 @@ class APIRouter(AbstractContextManager):
             if config is None:
                 config = self._get_default_config(provider_enum)
 
+            # Get response from appropriate provider
             if provider_enum == APIProvider.ANTHROPIC:
-                return await self._anthropic_request(messages, config)
+                response = await self._anthropic_request(messages, config)
             elif provider_enum == APIProvider.OPENAI:
-                return await self._openai_request(messages, config)
+                response = await self._openai_request(messages, config)
+            else:
+                raise ValueError(f"Unsupported provider: {provider}")
+
+            # Ensure response is properly formatted
+            if isinstance(response, dict):
+                return {
+                    "content": response.get("content", ""),
+                    "role": response.get("role", "assistant"),
+                    "usage": response.get("usage", {"input_tokens": 0, "output_tokens": 0}),
+                    "model": response.get("model", "unknown")
+                }
+            else:
+                return {
+                    "content": str(response),
+                    "role": "assistant",
+                    "usage": {"input_tokens": 0, "output_tokens": 0},
+                    "model": "unknown"
+                }
 
         except Exception as e:
             self.logger.error(f"Error routing request: {str(e)}")
