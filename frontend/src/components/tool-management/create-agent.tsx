@@ -82,16 +82,29 @@ interface CreateAgentProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Element {
-  const [description, setDescription] = useState<string>('')
-  const [isRecording, setIsRecording] = useState<boolean>(false)
-  const [isCreating, setIsCreating] = useState<boolean>(false)
-  const [existingAgents, setExistingAgents] = useState<Agent[]>([])
-  const [activeTab, setActiveTab] = useState<string>('create')
+  const [description, setDescription] = useState<string>('');
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [isCreating, setIsCreating] = useState<boolean>(false);
+  const [existingAgents, setExistingAgents] = useState<Agent[]>([]);
+  const [activeTab, setActiveTab] = useState<string>('create');
   const [parsedAgent, setParsedAgent] = useState<{
     name?: string;
     role?: string;
     tools?: string[];
-  }>({})
+  }>({});
+
+  const fetchExistingAgents = async (): Promise<void> => {
+    try {
+      const response = await fetch('http://localhost:8000/agents');
+      if (!response.ok) throw new Error('Failed to fetch agents');
+      const data = await response.json();
+      setExistingAgents(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching agents:', error);
+      toast.error('Failed to load existing agents');
+      setExistingAgents([]);
+    }
+  };
 
   useEffect(() => {
     void fetchExistingAgents()
@@ -224,10 +237,6 @@ export function CreateAgent({ className, ...props }: CreateAgentProps): JSX.Elem
       setIsCreating(false);
     }
   };
-
-      if (!response.ok) {
-        throw new Error('Failed to create agent')
-      }
 
       const data = await response.json()
       toast.success(`Agent created successfully with ID: ${data.agent_id}`)
