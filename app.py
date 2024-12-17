@@ -423,12 +423,20 @@ async def agent_status():
             detail=f"Error getting agent status: {str(e)}"
         )
 
-@app.route('/speak', methods=['POST'])
-async def speak():
+class SpeechRequest(BaseModel):
+    text: str
+
+class SpeechResponse(BaseModel):
+    status: str
+    audio_path: Optional[str] = None
+    error: Optional[str] = None
+
+@app.post('/speak', response_model=SpeechResponse)
+async def speak(request: SpeechRequest):
     """Handle text-to-speech requests."""
     try:
-        if not app.assistant or not app.assistant.tools:
-            return jsonify({'error': 'Assistant not initialized'}), 500
+        if not assistant or not assistant.tools:
+            raise HTTPException(status_code=500, detail="Assistant not initialized")
 
         data = await request.get_json()
         text = data.get('text')
