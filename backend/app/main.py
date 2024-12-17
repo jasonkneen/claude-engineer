@@ -128,7 +128,7 @@ async def chat(request: Request):
 async def list_tools():
     """List all available tools."""
     try:
-        tools = assistant._load_tools()
+        tools = await assistant._load_tools()
         return JSONResponse(content=jsonable_encoder(tools))
     except Exception as e:
         logger.error(f"Error listing tools: {str(e)}")
