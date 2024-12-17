@@ -536,13 +536,26 @@ async def transcribe(audio_file: UploadFile = File(...)):
                 detail=f"Error processing audio file: {str(e)}"
             )
 
-@app.route('/create-flow', methods=['POST'])
-async def create_flow():
+class FlowStep(BaseModel):
+    type: str
+    content: str
+
+class FlowRequest(BaseModel):
+    name: str
+    description: str
+    steps: List[FlowStep]
+
+class FlowResponse(BaseModel):
+    flow_id: str
+    status: str
+    message: str
+
+@app.post('/create-flow', response_model=FlowResponse)
+async def create_flow(flow: FlowRequest):
     """Create a new agent workflow."""
     try:
-        data = await request.get_json()
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
+        if not flow:
+            raise HTTPException(status_code=400, detail="No flow data provided")
 
         required_fields = ['name', 'description', 'steps']
         if not all(field in data for field in required_fields):
