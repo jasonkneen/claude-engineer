@@ -77,8 +77,77 @@ class APIRouter(AbstractContextManager):
             self._executor.shutdown(wait=True)
 
     async def setup(self) -> None:
-        """Async setup of API clients"""
+        """Async setup of API clients and default agents"""
         await self._setup_clients()
+        await self._setup_default_agents()
+
+    async def _setup_default_agents(self) -> None:
+        """Create default agents for management, context, and tracking"""
+        default_agents = [
+            {
+                "name": "management",
+                "role": "management",
+                "tools": ["agent_manager", "context_manager"]
+            },
+            {
+                "name": "context",
+                "role": "context",
+                "tools": ["context_manager", "file_reader"]
+            },
+            {
+                "name": "tracker",
+                "role": "tracker",
+                "tools": ["context_manager", "file_reader", "file_writer"]
+            }
+        ]
+
+        for agent in default_agents:
+            try:
+                await self.agent_manager.create_agent(
+                    name=agent["name"],
+                    role=agent["role"],
+                    tools=agent["tools"]
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to create default agent {agent['name']}: {str(e)}")
+
+    async def handle_websocket_message(self, websocket: WebSocket, message: Dict[str, Any]) -> None:
+        """Handle incoming WebSocket messages"""
+        try:
+            message_type = message.get("type", "message")
+            content = message.get("content", "")
+            voice_enabled = message.get("voice", False)
+
+            # Get response from LLM
+            response = await self.route_request(
+                provider="anthropic",
+                messages=[{"role": "user", "content": content}]
+            )
+
+            # Generate voice response if requested
+            audio_data = None
+            if voice_enabled and response.get("content"):
+                try:
+                    audio_data = await self.voice_tool.text_to_speech(response["content"])
+                except Exception as e:
+                    self.logger.error(f"Voice generation error: {str(e)}")
+
+            # Send response
+            await websocket.send_json({
+                "type": message_type,
+                "content": response.get("content", ""),
+                "role": "assistant",
+                "audio": audio_data,
+                "timestamp": datetime.datetime.now().isoformat()
+            })
+
+        except Exception as e:
+            self.logger.error(f"Error handling WebSocket message: {str(e)}")
+            await websocket.send_json({
+                "type": "error",
+                "content": f"Error: {str(e)}",
+                "timestamp": datetime.datetime.now().isoformat()
+            })
 
     async def _setup_clients(self) -> None:
         """Set up API clients with proper error handling"""
