@@ -56,24 +56,19 @@ async def chat(request: Request):
             
         logger.info(f"Processing chat message: {content[:100]}...")  # Log first 100 chars
         try:
-            # Ensure we properly await the chat response
+            # Get response from assistant
             response = await assistant.chat(content)
             
-            # Convert response to string if it's not already
-            response_content = str(response) if not isinstance(response, str) else response
-            
-            # Create response data
-            response_data = {
+            # Create a simple dict that we know is JSON serializable
+            response_dict = {
                 "type": "message",
-                "content": response_content,
+                "content": str(response),
                 "role": "assistant",
                 "timestamp": datetime.datetime.now().isoformat(),
                 "id": str(datetime.datetime.now().timestamp())
             }
             
-            # Use jsonable_encoder to ensure the response is JSON serializable
-            json_compatible_response = jsonable_encoder(response_data)
-            return JSONResponse(content=json_compatible_response)
+            return response_dict
         except Exception as chat_error:
             logger.error(f"Chat error: {str(chat_error)}")
             raise HTTPException(status_code=500, detail=str(chat_error))
