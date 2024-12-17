@@ -1,13 +1,18 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
-import asyncio
 
 class BaseTool(ABC):
     """Base class for all tools."""
 
-    async def __init__(self, name: Optional[str] = None):
+    def __init__(self, name: Optional[str] = None):
         self._name = name or self.__class__.__name__.lower()
-        await self.initialize()
+
+    @classmethod
+    async def create(cls, name: Optional[str] = None) -> 'BaseTool':
+        """Factory method to create and initialize a tool instance."""
+        instance = cls(name)
+        await instance.initialize()
+        return instance
 
     async def initialize(self):
         """Optional async initialization hook."""
