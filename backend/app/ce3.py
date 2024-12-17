@@ -569,33 +569,34 @@ class Assistant:
             return "Test Mode: This is a mock response. The application is working correctly, but API calls are disabled."
 
         try:
-            # Add user message to conversation history
-            self.conversation_history.append({
+            # Format user message for API
+            formatted_message = {
                 "role": "user",
-                "content": [{"type": "text", "text": user_input}]
-            })
+                "content": user_input
+            }
+            self.conversation_history.append(formatted_message)
 
-            # Show thinking indicator if enabled
-            if self.thinking_enabled:
-                with Live(Spinner('dots', text='Thinking...', style="cyan"),
-                         refresh_per_second=10, transient=True):
+            try:
+                # Get completion with proper error handling
+                if self.thinking_enabled:
+                    with Live(Spinner('dots', text='Thinking...', style="cyan"),
+                            refresh_per_second=10, transient=True):
+                        response = await self._get_completion()
+                else:
                     response = await self._get_completion()
-            else:
-                response = await self._get_completion()
 
-            # Ensure response is a string
-            if isinstance(response, (dict, list)):
-                response = str(response)
-            elif response is None:
-                response = "No response available"
+                # Format assistant response
+                formatted_response = {
+                    "role": "assistant",
+                    "content": response if isinstance(response, str) else str(response)
+                }
+                self.conversation_history.append(formatted_response)
 
-            # Update conversation history
-            self.conversation_history.append({
-                "role": "assistant",
-                "content": response
-            })
-
-            return response
+                return formatted_response["content"]
+            except Exception as e:
+                error_msg = f"Error in chat completion: {str(e)}"
+                self.console.print(f"[red]{error_msg}[/red]")
+                return error_msg
         except Exception as e:
             self.console.print(f"[red]Error in chat:[/red] {str(e)}")
             return f"Error: {str(e)}"
