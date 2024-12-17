@@ -50,13 +50,14 @@ async def startup_event():
 async def websocket_endpoint(websocket: WebSocket):
     """Handle WebSocket connections for real-time chat."""
     try:
-        # Add CORS headers for WebSocket
-        await websocket.accept(headers={
-            "Access-Control-Allow-Origin": "http://localhost:3000",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Allow-Credentials": "true",
-        })
+        # Check origin
+        origin = websocket.headers.get("origin", "")
+        if origin != "http://localhost:3000":
+            logger.warning(f"Rejected WebSocket connection from origin: {origin}")
+            await websocket.close(code=1008)  # Policy violation
+            return
+
+        await websocket.accept()
         
         client_id = str(id(websocket))
         connections[client_id] = websocket
