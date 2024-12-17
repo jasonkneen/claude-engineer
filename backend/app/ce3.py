@@ -424,7 +424,7 @@ class Assistant:
         Handles both text-only and multimodal messages.
         """
         try:
-            # Route request through API router
+            # Route request through API router and await the response
             response = await self.api_router.route_request(
                 provider=Config.DEFAULT_PROVIDER,
                 messages=self.conversation_history,
@@ -439,6 +439,14 @@ class Assistant:
                     system=f"{SystemPrompts.DEFAULT}\n\n{SystemPrompts.TOOL_USAGE}"
                 )
             )
+
+            # Ensure response is properly handled
+            if isinstance(response, dict) and 'content' in response:
+                return response['content']
+            elif isinstance(response, str):
+                return response
+            else:
+                return str(response)
 
             # Update token usage based on response usage
             if hasattr(response, 'usage') and response.usage:
