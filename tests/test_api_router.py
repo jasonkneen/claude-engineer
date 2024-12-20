@@ -1,20 +1,23 @@
 import pytest
+import pytest_asyncio
 import asyncio
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 from api_router import APIRouter, APIConfig, APIProvider
 import anthropic
 import openai
 
-@pytest.fixture
-def api_router():
-    with patch('openai.Client'), patch('anthropic.Anthropic'):
-        yield APIRouter()
+@pytest_asyncio.fixture
+async def api_router():
+    """Create API router fixture."""
+    router = APIRouter(test_mode=True)  # Enable test mode
+    await router._setup_clients()  # Initialize clients
+    return router
 
 @pytest.fixture
 def mock_anthropic_response():
     return Mock(
         content=[{"text": "Test response"}],
-        usage={"input_tokens": 10, "output_tokens": 20},
+        usage={"prompt_tokens": 10, "completion_tokens": 20},
         model="claude-3-sonnet-20240229"
     )
 
@@ -60,6 +63,9 @@ async def test_openai_request(api_router, mock_openai_response):
         max_tokens=100,
         temperature=0.7
     )
+
+    # Create event loop
+    loop = asyncio.get_event_loop()
 
     with patch.object(
         api_router.openai_client.chat.completions,
@@ -110,12 +116,15 @@ async def test_error_handling(api_router):
     """Test error handling"""
     messages = [{"role": "user", "content": "Test"}]
 
+    # Re-initialize clients to ensure clean state
+    await api_router._setup_clients()
+
     with patch.object(
         api_router.anthropic_client.messages,
         'create',
         side_effect=Exception("API Error")
     ):
-        with pytest.raises(Exception):
+        with pytest.raises(Exception) as exc_info:
             await api_router.route_request(
                 provider="anthropic",
                 messages=messages

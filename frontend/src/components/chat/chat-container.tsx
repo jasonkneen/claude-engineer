@@ -26,13 +26,13 @@ export function ChatContainer({ messages, className, ...props }: ChatContainerPr
     <div
       ref={containerRef}
       className={cn(
-        "flex flex-col gap-6 overflow-y-auto p-4 h-[calc(100vh-12rem)] bg-muted/10",
+        "flex flex-col gap-6 overflow-y-auto p-4 h-[calc(100vh-12rem)] bg-muted/10 dark:bg-muted/5",
         className
       )}
       {...props}
     >
       {messages.length === 0 && (
-        <div className="flex flex-col items-center justify-center h-full text-center space-y-4 animate-in fade-in-50 duration-500 p-8 rounded-lg bg-gradient-to-b from-background/50 to-muted/20">
+        <div className="flex flex-col items-center justify-center h-full text-center space-y-4 animate-in fade-in-50 duration-500 p-8 rounded-lg bg-gradient-to-b from-background/50 to-muted/20 dark:from-background/20 dark:to-muted/10">
           <h2 className="text-3xl font-semibold tracking-tight">Welcome to Claude Engineer</h2>
           <p className="text-muted-foreground text-lg">
             Start a conversation by typing a message below.
@@ -49,10 +49,10 @@ export function ChatContainer({ messages, className, ...props }: ChatContainerPr
         >
           <div
             className={cn(
-              "rounded-lg px-4 py-3 max-w-[80%] shadow-sm",
+              "rounded-lg px-4 py-3 max-w-[80%] shadow-sm dark:shadow-md",
               message.role === "user"
-                ? "bg-primary text-primary-foreground ml-auto"
-                : "bg-card border"
+                ? "bg-primary text-primary-foreground ml-auto dark:bg-primary/90"
+                : "bg-card border dark:bg-card/80 dark:border-muted"
             )}
           >
             <div className="prose dark:prose-invert prose-sm max-w-none">

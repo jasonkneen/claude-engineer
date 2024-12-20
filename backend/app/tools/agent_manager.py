@@ -1,12 +1,16 @@
 from .base import BaseTool
 from .agent_base import AgentBaseTool, AgentRole
-from ..api_router import APIRouter, APIConfig
-from typing import Dict, Any, Optional, List
+from ..api_types import APIConfig
+from typing import Dict, Any, Optional, List, Protocol
 import asyncio
 import logging
 import json
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
+
+class APIRouterProtocol(Protocol):
+    async def close(self) -> None:
+        ...
 
 @dataclass
 class AgentConfig:
@@ -57,16 +61,18 @@ class AgentManagerTool(BaseTool):
         "required": ["action"]
     }
 
-    def __init__(self, name: Optional[str] = None):
+    def __init__(self, name: Optional[str] = None, api_router: Optional[APIRouterProtocol] = None):
         """Initialize manager with API router and agent registry"""
         super().__init__(name)
         self.agents: Dict[str, AgentBaseTool] = {}
         self._executor = ThreadPoolExecutor(max_workers=4)
         self.logger = logging.getLogger(__name__)
+        self.api_router = api_router
 
     async def initialize(self):
-        """Initialize the API router"""
-        self.api_router = APIRouter()
+        """Initialize the API router if not provided"""
+        if self.api_router is None:
+            self.logger.warning("No API router provided, some functionality may be limited")
 
     async def execute(self, **kwargs) -> str:
         """Execute agent management operations.

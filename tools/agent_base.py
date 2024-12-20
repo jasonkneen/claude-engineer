@@ -39,20 +39,40 @@ class AgentState:
         return cls(**data)
 
 class AgentBaseTool(BaseTool):
-    def __init__(self, agent_id: str, role: AgentRole, name: Optional[str] = None):
+    def __init__(self, agent_id: str, role: Union[AgentRole, str], name: Optional[str] = None, custom_role: Optional[str] = None):
         """Initialize agent tool with ID, role and optional name."""
-        super().__init__()
+        # Don't call super().__init__() here since it's async
         self._agent_id = agent_id
-        self._role = role
-        self._name = name or self.__class__.__name__.lower()
-        self._description = "Base agent tool for handling agent operations"
+
+        # Handle role and custom_role
+        if isinstance(role, str):
+            try:
+                role_upper = role.upper()
+                if role_upper == "SPECIALIZED":
+                    self._role = AgentRole.CUSTOM
+                    self._custom_role = "specialized"
+                elif role_upper in AgentRole.__members__:
+                    self._role = AgentRole[role_upper]
+                    self._custom_role = None
+                else:
+                    self._role = AgentRole.CUSTOM
+                    self._custom_role = role.lower()
+            except (KeyError, ValueError):
+                raise ValueError(f"Invalid role: {role}")
+        else:
+            self._role = role
+            self._custom_role = custom_role if custom_role is not None else ("custom" if role == AgentRole.CUSTOM else None)
+
+        self._name = name or f"agent_{self._role.value}_{agent_id}".lower()
+        self._description = f"Agent-based tool for {self._role.value} operations"
         self._lock = asyncio.Lock()
+        self.logger = logging.getLogger(self._name)
         self.state = AgentState(
             agent_id=agent_id,
             agent_type=self._name,
             is_paused=False
         )
-    
+
     async def __aenter__(self):
         return self
 
@@ -64,19 +84,26 @@ class AgentBaseTool(BaseTool):
     def name(self) -> str:
         return self._name
 
-    @property 
+    @property
+    def agent_id(self) -> str:
+        return self._agent_id
+
+    @property
+    def role(self) -> AgentRole:
+        return self._role
+
+    @property
+    def custom_role(self) -> Optional[str]:
+        return self._custom_role
+
+    @property
     def description(self) -> str:
         return self._description
-
-    async def execute(self, command: str, **kwargs):
-        async with self._lock:
-            if self._paused:
-                return "Agent is currently paused"
-            return f"Processed: {command}"
 
     async def initialize(self):
         """Async initialization method."""
         await super().initialize()
+        self._executor = ThreadPoolExecutor(max_workers=4)  # Add thread pool executor
 
     @property
     def input_schema(self) -> Dict[str, Any]:
@@ -97,18 +124,8 @@ class AgentBaseTool(BaseTool):
         }
 
     async def execute(self, **kwargs) -> str:
-        """Execute agent operations in a thread-safe manner.
-
-        Args:
-            message: Command or message for the agent
-            context: Optional context data
-            task_id: Optional task identifier
-            api_provider: API provider to use (anthropic/openai)
-
-        Returns:
-            Execution result as string
-        """
-        async with self._lock:  # Use asyncio.Lock instead of threading.Lock
+        """Execute agent operations in a thread-safe manner."""
+        async with self._lock:
             if self.state.is_paused:
                 return f"Agent {self.agent_id} is currently paused"
 
@@ -124,7 +141,6 @@ class AgentBaseTool(BaseTool):
             self.state.progress = 0.0 if task_id else self.state.progress
 
             try:
-                # Execute message processing asynchronously
                 if message:
                     return await self._process_message(
                         message=message,
@@ -138,22 +154,20 @@ class AgentBaseTool(BaseTool):
                 return f"Error: {str(e)}"
 
     async def _process_message(self, message: str, context: Dict[str, Any], api_provider: str) -> str:
-        """Process message through central server.
-
-        This method should be overridden by specific agent implementations
-        to provide custom processing logic.
-        """
+        """Process message through central server."""
         raise NotImplementedError("Agent implementations must override _process_message")
 
-    async def pause(self) -> None:
-        """Pause agent operations"""
-        async with self._lock:
-            self.state.is_paused = True
+    async def _execute_action(self, **kwargs) -> str:
+        """Execute a custom action."""
+        return f"Processed action with args: {kwargs}"
 
-    async def resume(self) -> None:
-        """Resume agent operations"""
-        async with self._lock:
-            self.state.is_paused = False
+    async def pause(self):
+        """Pause agent operations."""
+        self.state.is_paused = True
+
+    async def resume(self):
+        """Resume agent operations."""
+        self.state.is_paused = False
 
     async def get_state(self) -> Dict[str, Any]:
         """Get current agent state"""

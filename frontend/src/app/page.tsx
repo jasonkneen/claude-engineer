@@ -1,28 +1,23 @@
-import type { Metadata } from 'next'
-import { ChatLayout } from '@/components/chat/chat-layout'
-import { ConnectionStatus } from '@/components/connection-status'
-import { ThemeToggle } from '@/components/theme-toggle'
-
-export const metadata: Metadata = {
-  title: 'Claude Engineer',
-  description: 'A self-improving assistant framework with tool creation',
-}
+import Link from 'next/link'
 
 export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col bg-background">
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex h-16 items-center px-4">
-          <h1 className="text-xl font-semibold">Claude Engineer</h1>
-          <div className="ml-auto flex items-center space-x-4">
-            <ConnectionStatus />
-            <ThemeToggle />
-          </div>
-        </div>
-      </header>
-      <div className="flex-1">
-        <ChatLayout />
+    <div className="flex min-h-screen flex-col items-center justify-center p-24">
+      <h1 className="text-4xl font-bold mb-8">Claude Engineer</h1>
+      <div className="flex gap-4">
+        <Link 
+          href="/manage" 
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+        >
+          Manage Agents
+        </Link>
+        <Link 
+          href="/test" 
+          className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90"
+        >
+          Connection Test
+        </Link>
       </div>
-    </main>
+    </div>
   )
 }

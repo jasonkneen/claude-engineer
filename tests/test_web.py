@@ -2,18 +2,19 @@ import pytest
 import pytest_asyncio
 from quart import Quart
 from quart.testing import QuartClient
+from werkzeug.datastructures import FileStorage
 import json
+import os
 from app import app as quart_app
 from unittest.mock import AsyncMock, patch, MagicMock
 from tools.voice_tool import VoiceRole, VoiceTool
-from tools.agent_base import AgentRole, AgentBaseTool
 import asyncio
 
 @pytest_asyncio.fixture
 async def voice_tool():
-    """Create voice tool fixture."""
-    tool = VoiceTool(agent_id="test_web_voice", role=VoiceRole.VOICE_CONTROL)
-    await tool.initialize()
+    """Create a mock voice tool for testing."""
+    tool = VoiceTool(agent_id='test_voice', role=VoiceRole.VOICE_CONTROL, name='TestVoice')
+    tool.transcribe = AsyncMock(return_value="Transcribed text")
     return tool
 
 @pytest_asyncio.fixture
@@ -22,20 +23,58 @@ async def app():
     app = quart_app
     app.config['TESTING'] = True
 
+    # Create upload directory
+    upload_dir = os.path.join(os.path.dirname(__file__), '..', 'static', 'uploads')
+    os.makedirs(upload_dir, exist_ok=True)
+
     # Mock assistant initialization
     mock_assistant = AsyncMock()
     mock_assistant.chat = AsyncMock(return_value="Test response")
     mock_assistant.tools = []
     mock_assistant.initialize = AsyncMock()
 
-    # Create async factory function
-    async def async_mock_assistant():
-        await mock_assistant.initialize()
-        return mock_assistant
+    # Create mock voice tool
+    mock_voice_tool = AsyncMock()
+    mock_voice_tool.agent_id = "test_voice"
+    mock_voice_tool.name = "Test Voice"
+    mock_voice_tool.role = VoiceRole.VOICE_CONTROL
+    mock_voice_tool.get_state = AsyncMock(return_value={
+        'is_paused': False,
+        'current_task': "Test task",
+        'progress': 50,
+        'task_history': ["Task 1", "Task 2"]
+    })
+    mock_voice_tool.speak = AsyncMock(return_value="/static/audio/test.wav")
+    mock_voice_tool.transcribe = AsyncMock(return_value="Test transcription")
+
+    # Create async factory function that properly handles initialization
+    async def async_mock_assistant(config=None):
+        # Create a new mock instance for each call
+        instance = AsyncMock()
+        instance.chat = AsyncMock(return_value="Test response")
+        instance.tools = [mock_voice_tool]
+        instance._initialized = False
+        instance.api_router = AsyncMock()
+        instance.api_router._setup_clients = AsyncMock(return_value=True)
+        instance.initialize_tools = AsyncMock(return_value=instance)
+        instance.conversation_history = []
+        instance.total_tokens_used = 0
+
+        # Create initialize method that properly handles async initialization
+        async def _initialize():
+            await instance.initialize_tools()
+            instance._initialized = True
+            return instance
+
+        # Set initialize as async method
+        instance.initialize = _initialize
+
+        # Return the instance directly, let app.py handle initialization
+        return instance
 
     with patch('app.Assistant', new=async_mock_assistant):
         await app.startup()  # Initialize assistant
-        return app
+        yield app
 
 @pytest_asyncio.fixture
 async def client(app):
@@ -183,9 +222,15 @@ async def test_voice_integration(client: QuartClient, voice_tool):
     with open('tests/test_audio.wav', 'wb') as f:
         f.write(b'test audio data')
 
-    with open('tests/test_audio.wav', 'rb') as f:
+    # Create form data with file using FileStorage
+    with open('tests/test_audio.wav', 'rb') as audio_file:
+        storage = FileStorage(
+            stream=audio_file,
+            filename='test_audio.wav',
+            content_type='audio/wav'
+        )
         response = await client.post('/transcribe',
-                                   data={'audio': (f, 'test_audio.wav')})
-    assert response.status_code == 200
-    data = await response.get_json()
-    assert 'text' in data
+                                   files={'audio': storage})
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert 'text' in data

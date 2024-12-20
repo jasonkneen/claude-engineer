@@ -8,8 +8,8 @@ from unittest.mock import Mock, patch, AsyncMock
 async def agent_manager():
     """Create agent manager fixture."""
     with patch('openai.Client'), patch('anthropic.Anthropic'):
-        manager = AgentManagerTool()
-        await manager.initialize()
+        manager = AgentManagerTool(test_mode=True)
+        await manager.setup()  # Initialize the manager
         yield manager
         await manager.close()
 
