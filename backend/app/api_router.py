@@ -1,22 +1,18 @@
 import anthropic
 import openai
-from typing import Dict, Any, Optional, List
 import asyncio
-import logging
-from concurrent.futures import ThreadPoolExecutor
 import os
 import json
 import datetime
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from enum import Enum
 from contextlib import AbstractContextManager
 from typing import Dict, Any, Optional, List, Set, Tuple
 from fastapi import WebSocket, WebSocketDisconnect
-from .tools.agent_manager import AgentManagerTool
 from .tools.context_manager import ContextManagerTool
 from .tools.voice_tool import VoiceTool
+from .api_types import APIProvider, APIConfig
 
 async def parse_agent_description(description: str) -> Dict[str, Any]:
     """Parse natural language description into agent properties"""
@@ -69,24 +65,6 @@ def get_tools_for_role(role: str) -> List[str]:
         "custom": []
     }
     return role_tools.get(role.lower(), [])
-from fastapi import WebSocket, WebSocketDisconnect
-from typing import List, Dict, Any, Optional, Set
-from .tools.agent_manager import AgentManagerTool
-from .tools.context_manager import ContextManagerTool
-from .tools.voice_tool import VoiceTool
-
-class APIProvider(Enum):
-    ANTHROPIC = "anthropic"
-    OPENAI = "openai"
-
-@dataclass
-class APIConfig:
-    model: str
-    max_tokens: int
-    temperature: float = 0.7
-    stream: bool = False
-    tools: Optional[List[Dict[str, Any]]] = None
-    system: Optional[str] = None
 
 class APIRouter(AbstractContextManager):
     """Routes API requests to appropriate LLM providers.
@@ -100,9 +78,11 @@ class APIRouter(AbstractContextManager):
         self.openai_client = None
         self.logger = logging.getLogger(__name__)
         self.active_connections: Set[WebSocket] = set()
-        self.agent_manager = AgentManagerTool()
         self.context_manager = ContextManagerTool()
         self.voice_tool = VoiceTool()
+        # Import here to avoid circular imports
+        from .tools.agent_manager import AgentManagerTool
+        self.agent_manager = AgentManagerTool(api_router=self)
 
     async def connect(self, websocket: WebSocket) -> None:
         """Handle new WebSocket connection"""
@@ -331,75 +311,6 @@ class APIRouter(AbstractContextManager):
                 "usage": {"input_tokens": 0, "output_tokens": 0},
                 "model": "unknown",
                 "tools": None
-            }
-            messages: List of conversation messages
-            config: Optional API configuration
-
-        Returns:
-            API response as dict
-        """
-        try:
-            # Validate and prepare provider
-            provider_enum = APIProvider(provider.lower())
-            if config is None:
-                config = self._get_default_config(provider_enum)
-
-            # Format messages for API request
-            formatted_messages = []
-            for msg in messages:
-                if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
-                    formatted_messages.append({
-                        'role': str(msg['role']),
-                        'content': str(msg['content'])
-                    })
-
-            # Get response from appropriate provider
-            try:
-                # Make API request
-                if provider_enum == APIProvider.ANTHROPIC:
-                    api_response = await self._anthropic_request(formatted_messages, config)
-                elif provider_enum == APIProvider.OPENAI:
-                    api_response = await self._openai_request(formatted_messages, config)
-                else:
-                    raise ValueError(f"Unsupported provider: {provider}")
-
-                # Format response
-                if isinstance(api_response, dict):
-                    content = str(api_response.get("content", ""))
-                    usage = api_response.get("usage", {})
-                    model = str(api_response.get("model", "unknown"))
-                else:
-                    content = str(api_response)
-                    usage = {"input_tokens": 0, "output_tokens": 0}
-                    model = "unknown"
-
-                # Return formatted response
-                return {
-                    "content": content,
-                    "role": "assistant",
-                    "usage": {
-                        "input_tokens": int(usage.get("input_tokens", 0)),
-                        "output_tokens": int(usage.get("output_tokens", 0))
-                    },
-                    "model": model
-                }
-
-            except Exception as provider_error:
-                self.logger.error(f"Provider error: {str(provider_error)}")
-                return {
-                    "content": f"Error: {str(provider_error)}",
-                    "role": "assistant",
-                    "usage": {"input_tokens": 0, "output_tokens": 0},
-                    "model": "unknown"
-                }
-
-        except Exception as e:
-            self.logger.error(f"Error routing request: {str(e)}")
-            return {
-                "content": f"Error: {str(e)}",
-                "role": "assistant",
-                "usage": {"input_tokens": 0, "output_tokens": 0},
-                "model": "unknown"
             }
 
     def _get_default_config(self, provider: APIProvider) -> APIConfig:

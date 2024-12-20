@@ -1,15 +1,55 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, File, UploadFile
+from fastapi import (
+    FastAPI, WebSocket, WebSocketDisconnect, HTTPException,
+    File, UploadFile, Request
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from typing import Optional, List, Dict, Any
+import datetime
+import uuid
+import json
+import logging
+import os
+import asyncio
+import anthropic
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=os.getenv('LOG_LEVEL', 'INFO'),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Validate required environment variables
+if not os.getenv('ANTHROPIC_API_KEY'):
+    logger.error('ANTHROPIC_API_KEY environment variable is not set')
+    raise ValueError('ANTHROPIC_API_KEY environment variable is not set')
+
+# Configure Anthropic client
+try:
+    anthropic_client = anthropic.Anthropic(
+        api_key=os.getenv('ANTHROPIC_API_KEY')
+    )
+    logger.info('Successfully initialized Anthropic client')
+except Exception as e:
+    logger.error(f'Failed to initialize Anthropic client: {str(e)}')
+    raise
+
+# Get server configuration from environment variables
+HOST = os.getenv('HOST', 'localhost')
+PORT = int(os.getenv('PORT', '8000'))
+
+# Configure CORS origins
+CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*').split(',')
 
 class ChatMessage(BaseModel):
     message: str
     image: Optional[str] = None
-
-class ChatResponse(BaseModel):
-    response: str
     thinking: bool = False
     tool_name: Optional[str] = None
     token_usage: Optional[Dict[str, int]] = None
@@ -22,634 +62,345 @@ class AgentParseResponse(BaseModel):
     role: str
     tools: List[str]
 
-class AgentParseRequest(BaseModel):
-    description: str
-
-class AgentParseResponse(BaseModel):
-    name: str
-    role: str
-    tools: List[str]
-
 class AgentConfig(BaseModel):
     enabled: bool
     agents: Optional[Dict[str, Any]] = None
-from fastapi.staticfiles import StaticFiles
-from ce3 import Assistant
-from tools.agent_base import AgentBaseTool, AgentRole
-from tools.voice_tool import VoiceTool, VoiceRole
-from tools.base import BaseTool
-from tools.agents.specialized_agents import FrontendAgent, BackendAgent, DatabaseAgent
-from tools.agents.base_conversation_agent import BaseConversationAgent
-from tools.agents.orchestrator_agent import OrchestratorAgent
-import os
-import time
-from werkzeug.utils import secure_filename
-import base64
-from config import Config
-import importlib
-import inspect
-from typing import List, Type
-import asyncio
-import logging
 
-app = FastAPI()
+# Initialize FastAPI app with configuration
+app = FastAPI(
+    title="Claude Engineer API",
+    description="API for managing AI agents and tools",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 # Configure CORS
+# Configure CORS with WebSocket support
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allow all origins in development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Log CORS configuration
+logger.info("CORS configured to allow all origins in development")
+logger.info("WebSocket endpoint available at ws://localhost:8000/ws")
 
-# Configure upload settings
-UPLOAD_FOLDER = 'uploads'
-MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
+# WebSocket connections manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
 
-# Ensure upload directory exists
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        logging.info("New WebSocket connection accepted")
 
-# Initialize globals
-assistant = None
-dark_mode = False
-agent_config = {}
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+        logging.info("WebSocket connection closed")
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logging.error(f"Error broadcasting message: {str(e)}")
+
+manager = ConnectionManager()
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint to verify server is running."""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.datetime.now().isoformat(),
+        "websocket_endpoint": "ws://localhost:8000/ws"
+    }
 
 @app.on_event("startup")
-async def startup():
-    """Initialize assistant and tools before serving."""
-    global assistant
+async def startup_event():
+    """Initialize services on startup."""
     try:
-        config = Config()
-        config.test_mode = True  # Enable test mode for development
-        assistant = await Assistant(config)  # Now properly awaitable
-        app.assistant = assistant  # Make assistant available in app context
-        tools = await load_tools()
-        for tool in tools.values():
-            assistant.tools.append(tool)
+        logger.info("Starting up server...")
+        # Add any additional startup initialization here
+        logger.info(f"Server running at http://{HOST}:{PORT}")
+        logger.info("WebSocket endpoint available at ws://localhost:8000/ws")
     except Exception as e:
-        logging.error(f"Error during startup: {str(e)}")
+        logger.error(f"Error during startup: {str(e)}")
         raise
 
-@app.route('/')
-async def home():
-    """Render main application page."""
-    return await render_template('index.html', dark_mode=dark_mode)
-
-@app.route('/dark-mode', methods=['GET', 'POST'])
-async def toggle_dark_mode():
-    """Handle dark mode toggle."""
-    global dark_mode
-    if request.method == 'POST':
-        data = await request.get_json()
-        dark_mode = data.get('enabled', False)
-    return jsonify({'enabled': dark_mode})
-
-@app.route('/agent-config', methods=['GET', 'POST'])
-async def handle_agent_config():
-    """Handle agent configuration."""
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown."""
     try:
-        if request.method == 'POST':
-            data = await request.get_json()
-            agent_config.update(data)
-        return jsonify({'agents': agent_config})
+        logger.info("Shutting down server...")
+        # Add any cleanup code here
     except Exception as e:
-        logging.error(f"Error in agent-config endpoint: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error during shutdown: {str(e)}")
+        raise
 
-@app.route('/update-agent-config', methods=['POST'])
-async def update_agent_config():
-    """Update agent configuration."""
+async def parse_agent_description(description: str) -> Dict[str, Any]:
+    """Parse natural language description into agent properties"""
     try:
-        data = await request.get_json()
-        agent_config.update(data)
-        return jsonify({
-            'status': 'updated',
-            'config': agent_config
-        })
+        if not os.getenv("ANTHROPIC_API_KEY"):
+            logger.error("ANTHROPIC_API_KEY not set")
+            raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
+
+        # Use Claude to parse the description
+        response = await anthropic_client.messages.create(
+            model="claude-3-sonnet-20240229",
+            max_tokens=1000,
+            messages=[{
+                "role": "user",
+                "content": f"""Parse this agent description and extract name, role, and recommended tools.
+                Description: {description}
+                
+                Return a JSON object with:
+                - name: extracted or generated name
+                - role: one of [test, context, orchestrator, custom]
+                - tools: list of recommended tool names
+                
+                Base the tool selection on the agent's purpose.
+                
+                Example response:
+                {{
+                    "name": "API Tester",
+                    "role": "test",
+                    "tools": ["http_client", "test_runner", "logger"]
+                }}"""
+            }]
+        )
+        
+        # Extract the JSON from Claude's response
+        content = response.content[0].text
+        parsed = json.loads(content)
+        
+        return {
+            "name": parsed.get("name", ""),
+            "role": parsed.get("role", "custom"),
+            "tools": parsed.get("tools", [])
+        }
+        
     except Exception as e:
-        logging.error(f"Error updating agent config: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"Error parsing agent description: {str(e)}")
+        return {
+            "name": "",
+            "role": "custom",
+            "tools": []
+        }
 
-async def load_tools():
-    """Load and initialize all tools from the tools directory."""
-    tools_dir = os.path.join(os.path.dirname(__file__), 'tools')
-    tools = {}
-    timestamp = int(time.time())
-    processed_classes = set()  # Track processed classes to avoid duplicates
+@app.get("/agents")
+async def get_agents():
+    """Get list of all agents."""
+    try:
+        # For now, return empty list as we don't have persistence
+        return []
+    except Exception as e:
+        logging.error(f"Error getting agents: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error getting agents: {str(e)}"
+        )
 
-    for filename in os.listdir(tools_dir):
-        if filename.endswith('.py') and not filename.startswith('__'):
-            module_name = filename[:-3]
-            try:
-                module = importlib.import_module(f'tools.{module_name}')
-                for name, obj in inspect.getmembers(module):
-                    if (not inspect.isclass(obj) or
-                        obj.__module__ != f'tools.{module_name}' or
-                        not name.endswith('Tool') or
-                        obj in processed_classes):
-                        continue
-
-                    if inspect.isabstract(obj):
-                        continue
-
-                    processed_classes.add(obj)
-                    tool_name = name.lower()
-                    agent_id = f"{tool_name}_{timestamp}"
-
-                    try:
-                        if AgentBaseTool in obj.__mro__[1:]:
-                            role_map = {
-                                'AgentManagerTool': AgentRole.ORCHESTRATOR,
-                                'TestAgentTool': AgentRole.TEST,
-                                'ContextManagerTool': AgentRole.CONTEXT,
-                                'TaskAgentTool': AgentRole.TASK,
-                                'ConversationAgentTool': AgentRole.CONVERSATION,
-                                'FrontendAgentTool': AgentRole.FRONTEND,
-                                'BackendAgentTool': AgentRole.BACKEND,
-                                'DatabaseAgentTool': AgentRole.DATABASE
-                            }
-                            role = role_map.get(name, AgentRole.CUSTOM)
-                            tool = obj(agent_id=agent_id, role=role, name=name)
-                            await tool.initialize()
-
-                        elif VoiceTool in obj.__mro__[1:]:
-                            tool = obj(agent_id=agent_id, role=VoiceRole.VOICE_CONTROL, name=f"Voice_{name}")
-                            await tool.initialize()
-
-                        elif BaseTool in obj.__mro__[1:]:
-                            tool = obj(name=name)
-                            await tool.initialize()
-
-                        else:
-                            continue
-
-                        if tool:
-                            tools[tool_name] = tool
-                            print(f'Loaded tool: {name}')
-
-                    except Exception as e:
-                        print(f'Error initializing tool {name}: {str(e)}')
-
-            except Exception as e:
-                print(f'Error loading module {module_name}: {str(e)}')
-
-    return tools
+# WebSocket configuration
+WS_PING_INTERVAL = int(os.getenv('WS_PING_INTERVAL', '30'))
+WS_PING_TIMEOUT = int(os.getenv('WS_PING_TIMEOUT', '10'))
+MAX_AGENTS = int(os.getenv('MAX_AGENTS', '10'))
+AGENT_TIMEOUT = int(os.getenv('AGENT_TIMEOUT', '300'))
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """Handle WebSocket connections for real-time chat."""
+    """Handle WebSocket connections for real-time chat and agent creation."""
+    ping_task = None
     try:
-        await websocket.accept()
-        while True:
-            try:
-                # Receive and parse message
-                data = await websocket.receive_json()
-                message = data.get('message', '')
-                voice_enabled = data.get('voice', False)
+        logger.info(f"New WebSocket connection attempt from {websocket.client}")
+        await manager.connect(websocket)
+        logger.info("WebSocket connection accepted")
+        
+        # Send initial connection success message
+        connection_message = {
+            'type': 'connected',
+            'content': 'Successfully connected to server',
+            'timestamp': datetime.datetime.now().isoformat()
+        }
+        await websocket.send_json(connection_message)
+        logger.info(f"Sent connection success message: {connection_message}")
 
-                # Process message
-                response = await assistant.chat(message)
-
-                # Generate voice response if requested
-                audio_data = None
-                if voice_enabled and response:
+        # Start ping/pong task
+        async def ping_pong():
+            while True:
+                try:
+                    await asyncio.sleep(WS_PING_INTERVAL)
+                    await websocket.send_json({
+                        'type': 'ping',
+                        'timestamp': datetime.datetime.now().isoformat()
+                    })
+                    # Wait for pong response
                     try:
-                        voice_tool = next((tool for tool in assistant.tools if isinstance(tool, VoiceTool)), None)
-                        if voice_tool:
-                            audio_data = await voice_tool.text_to_speech(str(response))
-                    except Exception as e:
-                        logging.error(f"Voice generation error: {str(e)}")
+                        await asyncio.wait_for(
+                            websocket.receive_text(),
+                            timeout=WS_PING_TIMEOUT
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning("Ping timeout, closing connection")
+                        await websocket.close()
+                        break
+                except Exception as e:
+                    logger.error(f"Error in ping/pong: {str(e)}")
+                    break
 
-                # Send response
-                await websocket.send_json({
-                    'response': response,
-                    'audio': audio_data,
-                    'thinking': False,
-                    'timestamp': datetime.datetime.now().isoformat()
-                })
+        # Start ping/pong task
+        ping_task = asyncio.create_task(ping_pong())
+
+        # Keep connection alive and handle messages
+        connected = True
+        while connected:
+            try:
+                # Wait for messages
+                raw_data = await websocket.receive_text()
+                logging.info(f"Received raw message: {raw_data}")
+                
+                try:
+                    data = json.loads(raw_data)
+                    logger.info(f"Parsed message data: {data}")
+                    
+                    # Validate message structure
+                    if not isinstance(data, dict):
+                        raise ValueError("Message must be a JSON object")
+                    
+                    if 'type' not in data or 'content' not in data:
+                        raise ValueError("Message must contain 'type' and 'content' fields")
+                        
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.error(f"Invalid message format: {str(e)}")
+                    await websocket.send_json({
+                        'type': 'error',
+                        'content': 'Invalid JSON message',
+                        'timestamp': datetime.datetime.now().isoformat()
+                    })
+                    continue
+
+                if not isinstance(data, dict):
+                    await websocket.send_json({
+                        'type': 'error',
+                        'content': 'Message must be a JSON object',
+                        'timestamp': datetime.datetime.now().isoformat()
+                    })
+                    continue
+
+                message_type = data.get('type')
+                content = data.get('content')
+
+                if not message_type or not content:
+                    await websocket.send_json({
+                        'type': 'error',
+                        'content': 'Message must contain type and content fields',
+                        'timestamp': datetime.datetime.now().isoformat()
+                    })
+                    continue
+
+                # Handle pong messages
+                if message_type == 'pong':
+                    logger.debug("Received pong message")
+                    continue
+
+                # Handle regular messages
+                if message_type == 'message':
+                    # Handle initial connection message
+                    if content == 'Agent creation client connected':
+                        logger.info("Client connection acknowledged")
+                        await websocket.send_json({
+                            'type': 'connected',
+                            'content': 'Connection acknowledged',
+                            'timestamp': datetime.datetime.now().isoformat()
+                        })
+                        continue
+
+                    try:
+                        # Parse agent description
+                        parsed = await parse_agent_description(content)
+                        await websocket.send_json({
+                            'type': 'agent_parsed',
+                            'content': parsed,
+                            'timestamp': datetime.datetime.now().isoformat()
+                        })
+
+                        # Create agent (mock for now)
+                        await websocket.send_json({
+                            'type': 'agent_created',
+                            'content': {
+                                'id': str(uuid.uuid4()),
+                                'name': parsed['name'],
+                                'role': parsed['role'],
+                                'tools': parsed['tools']
+                            },
+                            'timestamp': datetime.datetime.now().isoformat()
+                        })
+                    except Exception as e:
+                        logging.error(f"Error processing agent: {str(e)}")
+                        await websocket.send_json({
+                            'type': 'error',
+                            'content': f"Error processing agent: {str(e)}",
+                            'timestamp': datetime.datetime.now().isoformat()
+                        })
+                else:
+                    await websocket.send_json({
+                        'type': 'error',
+                        'content': f"Unknown message type: {message_type}",
+                        'timestamp': datetime.datetime.now().isoformat()
+                    })
 
             except WebSocketDisconnect:
-                logging.info("WebSocket client disconnected")
-                break
+                logging.info("Client disconnected")
+                connected = False
             except Exception as e:
                 logging.error(f"Error processing message: {str(e)}")
                 await websocket.send_json({
-                    'error': str(e),
+                    'type': 'error',
+                    'content': f"Error processing message: {str(e)}",
                     'timestamp': datetime.datetime.now().isoformat()
                 })
+
+    except WebSocketDisconnect:
+        logger.info("Client disconnected normally")
     except Exception as e:
-        logging.error(f"WebSocket connection error: {str(e)}")
-
-@app.post("/parse-agent", response_model=AgentParseResponse)
-async def parse_agent(request: AgentParseRequest):
-    """Parse natural language description into agent properties."""
-    try:
-        if not app.assistant:
-            raise HTTPException(status_code=500, detail="Assistant not initialized")
-        
-        parsed = await app.assistant.api_router.parse_agent(request.description)
-        if not parsed.get("name") or not parsed.get("role"):
-            raise HTTPException(status_code=400, detail="Failed to parse agent description")
-        
-        return AgentParseResponse(
-            name=parsed["name"],
-            role=parsed["role"],
-            tools=parsed.get("tools", [])
-        )
-        
-    except Exception as e:
-        logging.error(f"Error parsing agent description: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error parsing agent description: {str(e)}"
-        )
-
-@app.post("/parse-agent", response_model=AgentParseResponse)
-async def parse_agent(request: AgentParseRequest):
-    """Parse natural language description into agent properties."""
-    try:
-        if not app.assistant:
-            raise HTTPException(status_code=500, detail="Assistant not initialized")
-        
-        parsed = await app.assistant.api_router.parse_agent(request.description)
-        if not parsed.get("name") or not parsed.get("role"):
-            raise HTTPException(status_code=400, detail="Failed to parse agent description")
-        
-        return AgentParseResponse(
-            name=parsed["name"],
-            role=parsed["role"],
-            tools=parsed.get("tools", [])
-        )
-        
-    except Exception as e:
-        logging.error(f"Error parsing agent description: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error parsing agent description: {str(e)}"
-        )
-
-@app.post("/chat", response_model=ChatResponse)
-async def chat(message: ChatMessage):
-    """Chat endpoint with proper request/response models."""
-    try:
-        message_text = message.message
-        image_data = message.image
-
-        if image_data:
-            message_content = [
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/jpeg",
-                        "data": image_data.split(',')[1] if ',' in image_data else image_data
-                    }
-                }
-            ]
-
-            if message.strip():
-                message_content.append({
-                    "type": "text",
-                    "text": message
-                })
-        else:
-            message_content = message
-
-        response = await assistant.chat(message_content)
-
-        token_usage = {
-            'total_tokens': assistant.total_tokens_used,
-            'max_tokens': Config.MAX_CONVERSATION_TOKENS
-        }
-
-        tool_name = None
-        if assistant.conversation_history:
-            for msg in reversed(assistant.conversation_history):
-                if msg.get('role') == 'assistant' and msg.get('content'):
-                    content = msg['content']
-                    if isinstance(content, list):
-                        for block in content:
-                            if isinstance(block, dict) and block.get('type') == 'tool_use':
-                                tool_name = block.get('name')
-                                break
-                    if tool_name:
-                        break
-
-        return ChatResponse(
-            response=str(response),
-            thinking=False,
-            tool_name=tool_name,
-            token_usage=token_usage
-        )
-
-    except Exception as e:
-        logging.error(f"Exception in chat route: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error processing chat request: {str(e)}"
-        )
-
-class FileUploadResponse(BaseModel):
-    success: bool
-    image_data: Optional[str] = None
-    media_type: Optional[str] = None
-    error: Optional[str] = None
-
-@app.post('/upload', response_model=FileUploadResponse)
-async def upload_file(file: UploadFile = File(...)):
-    """Handle file uploads with proper response model."""
-    try:
-        if not file:
-            raise HTTPException(status_code=400, detail="No file uploaded")
-    
-        if file.filename == '':
-            raise HTTPException(status_code=400, detail="No selected file")
-    
-        if not file.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-            raise HTTPException(status_code=400, detail="Invalid file type")
-
-        # Create temp file path
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        
-        try:
-            # Save uploaded file
-            contents = await file.read()
-            with open(filepath, "wb") as f:
-                f.write(contents)
-            
-            # Get media type
-            media_type = file.content_type or 'image/jpeg'
-            
-            # Read and encode file
-            with open(filepath, "rb") as image_file:
-                encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
-            
-            # Clean up
-            os.remove(filepath)
-            
-            return FileUploadResponse(
-                success=True,
-                image_data=encoded_string,
-                media_type=media_type
-            )
-            
-        except Exception as e:
-            if os.path.exists(filepath):
-                os.remove(filepath)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error processing file: {str(e)}"
-            )
-            
-    except Exception as e:
-        logging.error(f"Exception in upload_file route: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error uploading file: {str(e)}"
-        )
-
-class ResetResponse(BaseModel):
-    status: str
-    message: Optional[str] = None
-
-@app.post('/reset', response_model=ResetResponse)
-async def reset():
-    """Reset assistant state."""
-    try:
-        assistant.reset()
-        return ResetResponse(status="success", message="Assistant state reset successfully")
-    except Exception as e:
-        logging.error(f"Error resetting assistant: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error resetting assistant: {str(e)}"
-        )
-
-class AgentState(BaseModel):
-    id: str
-    name: str
-    role: Optional[str] = None
-    status: str
-    current_task: Optional[str] = None
-    progress: Optional[float] = None
-    task_history: Optional[List[str]] = None
-
-class AgentStatusResponse(BaseModel):
-    agents: List[AgentState]
-    voice_enabled: bool = False
-    error: Optional[str] = None
-
-@app.get('/agent-status', response_model=AgentStatusResponse)
-async def agent_status():
-    """Get agent status information."""
-    try:
-        if not assistant or not assistant.tools:
-            raise HTTPException(status_code=500, detail="Assistant not initialized")
-
-        agents = []
-        voice_enabled = False
-
-        for tool in assistant.tools:
-            if hasattr(tool, 'get_state'):
-                try:
-                    tool_state = await tool.get_state()
-                    agent_state = AgentState(
-                        id=getattr(tool, 'agent_id', tool.__class__.__name__),
-                        name=getattr(tool, 'name', tool.__class__.__name__),
-                        role=getattr(tool, 'role', None).value if hasattr(tool, 'role') and getattr(tool, 'role', None) else None,
-                        status='Active' if not tool_state.get('is_paused', False) else 'Paused',
-                        current_task=tool_state.get('current_task'),
-                        progress=tool_state.get('progress'),
-                        task_history=tool_state.get('task_history', [])
-                    )
-                    agents.append(agent_state)
-                except Exception as e:
-                    logging.error(f"Error getting state for tool {tool.__class__.__name__}: {str(e)}")
-                    continue
-
-            if hasattr(tool, 'role') and getattr(tool, 'role', None) == VoiceRole.VOICE_CONTROL:
-                voice_enabled = True
-
-        return AgentStatusResponse(
-            agents=agents,
-            voice_enabled=voice_enabled
-        )
-
-    except Exception as e:
-        logging.error(f"Error in agent-status endpoint: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error getting agent status: {str(e)}"
-        )
-
-class SpeechRequest(BaseModel):
-    text: str
-
-class SpeechResponse(BaseModel):
-    status: str
-    audio_path: Optional[str] = None
-    error: Optional[str] = None
-
-@app.post('/speak', response_model=SpeechResponse)
-async def speak(request: SpeechRequest):
-    """Handle text-to-speech requests."""
-    try:
-        if not assistant or not assistant.tools:
-            raise HTTPException(status_code=500, detail="Assistant not initialized")
-
-        if not request.text:
-            raise HTTPException(status_code=400, detail="No text provided")
-
-        voice_tool = next(
-            (tool for tool in assistant.tools 
-             if hasattr(tool, 'role') and getattr(tool, 'role', None) == VoiceRole.VOICE_CONTROL),
-            None
-        )
-        
-        if not voice_tool:
-            raise HTTPException(status_code=500, detail="Voice tool not available")
-
-        try:
-            audio_path = await voice_tool.speak(request.text)
-            return SpeechResponse(
-                status="success",
-                audio_path=audio_path
-            )
-        except Exception as e:
-            logging.error(f"Error generating speech: {str(e)}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Speech generation failed: {str(e)}"
-            )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error in speak endpoint: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error processing speech request: {str(e)}"
-        )
-
-class TranscriptionResponse(BaseModel):
-    text: str
-    error: Optional[str] = None
-
-@app.post('/transcribe', response_model=TranscriptionResponse)
-async def transcribe(audio_file: UploadFile = File(...)):
-    """Handle speech-to-text requests."""
-    try:
-        if not assistant or not assistant.tools:
-            raise HTTPException(status_code=500, detail="Assistant not initialized")
-
-        if not audio_file.filename:
-            raise HTTPException(status_code=400, detail="Invalid audio file")
-
-        # Create temp file path
-        temp_path = os.path.join('static', 'uploads', f'temp_{int(time.time())}.wav')
-        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-
-        try:
-            # Save uploaded file
-            contents = await audio_file.read()
-            with open(temp_path, "wb") as f:
-                f.write(contents)
-
-            # Get voice tool
-            voice_tool = next(
-                (tool for tool in assistant.tools 
-                 if hasattr(tool, 'role') and getattr(tool, 'role', None) == VoiceRole.VOICE_CONTROL),
-                None
-            )
-
-            if not voice_tool:
-                raise HTTPException(status_code=500, detail="Voice tool not available")
-
+        logger.error(f"WebSocket error occurred: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+    finally:
+        if ping_task:
+            logger.info("Cancelling ping task")
+            ping_task.cancel()
             try:
-                # Transcribe audio
-                text = await voice_tool.transcribe(temp_path)
-                return TranscriptionResponse(text=text)
-
+                await ping_task
+            except asyncio.CancelledError:
+                logger.info("Ping task cancelled successfully")
             except Exception as e:
-                logging.error(f"Error transcribing audio: {str(e)}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Transcription failed: {str(e)}"
-                )
-
-            finally:
-                # Clean up temp file
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-
-        except HTTPException:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-            raise
-        except Exception as e:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-            logging.error(f"Error in transcribe endpoint: {str(e)}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error processing audio file: {str(e)}"
-            )
-
-class FlowStep(BaseModel):
-    type: str
-    content: str
-
-class FlowRequest(BaseModel):
-    name: str
-    description: str
-    steps: List[FlowStep]
-
-class FlowResponse(BaseModel):
-    flow_id: str
-    status: str
-    message: str
-
-@app.post('/create-flow', response_model=FlowResponse)
-async def create_flow(flow: FlowRequest):
-    """Create a new agent workflow."""
-    try:
-        if not flow:
-            raise HTTPException(status_code=400, detail="No flow data provided")
-
-        # Validate steps
-        if not flow.steps:
-            raise HTTPException(
-                status_code=400,
-                detail="Steps must be a non-empty list"
-            )
-
-        # Generate flow ID
-        flow_id = f"flow_{int(time.time())}"
-
-        # Create flow response
-        return FlowResponse(
-            flow_id=flow_id,
-            status="created",
-            message=f"Created flow: {flow.name}"
-        )
-
-    except ValidationError as e:
-        logging.error(f"Validation error in create-flow: {str(e)}")
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid flow data: {str(e)}"
-        )
-    except Exception as e:
-        logging.error(f"Error in create-flow endpoint: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error creating flow: {str(e)}"
-        )
+                logger.error(f"Error cancelling ping task: {str(e)}")
+        try:
+            manager.disconnect(websocket)
+            await websocket.close()
+        except:
+            pass
+        logger.info("WebSocket connection closed")
 
 if __name__ == '__main__':
-    app.run(debug=False, port=6606, host='localhost')
+    try:
+        import uvicorn
+        logger.info(f"Starting server on {HOST}:{PORT}")
+        uvicorn.run(
+            app,
+            host=HOST,
+            port=PORT,
+            log_level=os.getenv('LOG_LEVEL', 'info').lower(),
+            reload=os.getenv('DEBUG', 'false').lower() == 'true'
+        )
+    except Exception as e:
+        logger.error(f"Failed to start server: {str(e)}")
+        raise
