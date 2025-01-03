@@ -64,9 +64,13 @@ class VersionControl:
         new_branch.checkout()
         return current
         
-    def commit_changes(self, files: List[str], message: str):
-        self.repo.index.add(files)
-        self.repo.index.commit(message)
+    def commit_changes(self, files: List[str], message: str) -> bool:
+        try:
+            self.repo.index.add(files)
+            self.repo.index.commit(message)
+            return True
+        except git.GitCommandError:
+            return False
         
     def push_changes(self, branch_name: str):
         self.repo.remotes.origin.push(branch_name)
@@ -76,9 +80,13 @@ class VersionControl:
         relative_path = os.path.relpath(file_path, self.repo.working_tree_dir)
         return relative_path not in self.repo.untracked_files
         
-    def add_file(self, file_path: str) -> None:
+    def add_file(self, file_path: str) -> bool:
         """Add a single file to git tracking"""
-        self.repo.index.add([file_path])
+        try:
+            self.repo.index.add([file_path])
+            return True
+        except git.GitCommandError:
+            return False
         
     def rollback_to_commit(self, commit_hash: str):
         self.repo.git.reset('--hard', commit_hash)
