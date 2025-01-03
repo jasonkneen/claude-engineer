@@ -13,14 +13,40 @@ class FileContentReaderTool(BaseTool):
     When given a directory, recursively reads all text files while skipping binaries and common ignore patterns.
     '''
     
-    # Files and directories to ignore
+    # Files and directories to ignore - grouped by category:
+    # 1. Package manager and dependency directories
+    # 2. Build output and compilation artifacts  
+    # 3. Testing and coverage artifacts
+    # 4. Environment and virtual environment files
+    # 5. Configuration files and lock files that can be regenerated
+    # 6. Editor and IDE files
+    # 7. System and hidden files
+    # 8. Binary and compiled files
+    # 9. Media and asset files 
     IGNORE_PATTERNS = {
-        # Hidden files and directories
-        '.git', '.svn', '.hg', '.DS_Store', '.env', '.idea', '.vscode', '.settings',
-        # Build directories
-        'node_modules', '__pycache__', 'build', 'dist', 'venv', 'env', 'bin', 'obj',
-        'target', 'out', 'Debug', 'Release', 'x64', 'x86', 'builds', 'coverage',
-        # Binary file extensions
+        # Package manager and dependency directories
+        'node_modules', 'bower_components', '.npm', '.yarn',
+        '.pip-cache', '.poetry', 'poetry.lock', 'package-lock.json',
+        'yarn.lock', 'requirements.lock', 'Pipfile.lock',
+        '__pycache__', '.pytest_cache', '.ruff_cache', '.mypy_cache',
+        # Build and environment directories
+        'build', 'dist', 'bin', 'obj', 'out', 'target',
+        'Debug', 'Release', 'x64', 'x86', 'builds',
+        'venv', '.venv', 'env', '.env', 'virtualenv', '.virtualenv',
+        '.python-version', '.ruby-version', '.node-version',
+        # Test and coverage artifacts 
+        '.coverage', 'coverage', 'htmlcov', '.tox', '.nox',
+        '.pytest_cache', 'test-results', '.hypothesis',
+        # Config files that can be regenerated
+        '.eslintrc*', '.prettierrc*', '.stylelintrc*', '.editorconfig',
+        'tsconfig.json', 'babel.config.*', '.babelrc', 'jest.config.*',
+        'webpack.config.*', 'rollup.config.*', 'vite.config.*',
+        # SCM and editor files
+        '.git', '.svn', '.hg', '.idea', '.vscode', '.settings',
+        '.project', '.classpath', '.factorypath', '*.iml', '*.sln',
+        # System and hidden files
+        '.DS_Store', 'Thumbs.db', '.directory', '*.swp', '*~',
+        # Binary and compiled files
         '.pyc', '.pyo', '.so', '.dll', '.dylib', '.pdb', '.ilk', '.exp', '.map',
         '.exe', '.bin', '.dat', '.db', '.sqlite', '.sqlite3', '.o', '.cache',
         '.lib', '.a', '.sys', '.ko', '.obj', '.iso', '.msi', '.msp', '.msm',

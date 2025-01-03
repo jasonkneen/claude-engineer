@@ -1,0 +1,18 @@
+{
+  "timestamp": "20250103_115825",
+  "full_history": [
+    {
+      "role": "user",
+      "content": "hello"
+    },
+    {
+      "role": "user",
+      "content": "ok we need a way for you to be able to spawn improved versions of yourself. So I think we should try to do a symlink style arrangement but we can do it by creating a subfolder called ce3 and then inside that are our versions of the ce3* files, then we simply make the \"default\" file the latest one. If you need to recode yourself or are asked to then you can dupe the latest, modify it, test it, make sure it works and then simply re point ce3 to the latest one. Think about that and backup / git commit before you change ANYTHING"
+    },
+    {
+      "role": "user",
+      "content": "continue"
+    }
+  ],
+  "total_tokens": 125
+}

@@ -1,3 +1,35 @@
+# Python
+*.py[cod]
+__pycache__/
+*.so
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment files
+.env
+!.env.example
+.venv/
+env/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build and dist
+build/
+dist/
+*.egg-info/
+
+# Existing backup patterns
 *.bak
 *.bak-*
 context_full_*.json

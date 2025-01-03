@@ -1,0 +1,19 @@
+{
+  "null": {
+    "id": null,
+    "config": {
+      "transport": "sse",
+      "connection": {
+        "url": "http://localhost:3000/chat"
+      },
+      "settings": {
+        "reconnect": true,
+        "interface": "web"
+      }
+    },
+    "status": "initialized",
+    "created_at": "2025-01-03T09:36:54.800327",
+    "last_updated": "2025-01-03T09:36:54.800339",
+    "health": "unknown"
+  }
+}

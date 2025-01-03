@@ -1,4 +1,3 @@
-```python
 from tools.base import BaseTool
 import os
 import shutil
@@ -150,4 +149,3 @@ class Ce3MaintenanceTool(BaseTool):
     def _rollback(self, backup_path: str):
         if os.path.exists(backup_path):
             shutil.copy2(f"{backup_path}/ce3.py", "ce3.py")
-```

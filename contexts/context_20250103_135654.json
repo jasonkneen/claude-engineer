@@ -1,0 +1,18 @@
+{
+  "timestamp": "20250103_135654",
+  "full_history": [
+    {
+      "role": "user",
+      "content": "hello"
+    },
+    {
+      "role": "user",
+      "content": "ok so this project /Users/jkneen/Downloads/realtime-voice is a real-time voice demo where two \"agents\" come into a conversation and I can speak to them. I want you to take this project, copy it, then create a new MCP tool in your library, and call that realtimevoice and then I want you to implement a version of the code that can run a single realtimevoice, and then I will want to test this by creating two agents, both of which will be primed with this tool and I want to then have a conversation with them. You should take care of setting up tooling, installing, everything and then let me know when you're ready for me to see it. All keys etc are in the project and everything required to be installed in the project is already installed."
+    },
+    {
+      "role": "user",
+      "content": "ok continue"
+    }
+  ],
+  "total_tokens": 0
+}
