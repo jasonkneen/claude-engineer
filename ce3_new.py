@@ -1,4 +1,4 @@
-# ce3.py
+from datetime import datetime
 from anthropic import AsyncAnthropic
 from dataclasses import asdict, dataclass, field
 import asyncio
@@ -190,9 +190,18 @@ class Memory:
         Returns tuple of (full_history_file, context_baton_file) on success,
         or (None, None) on failure.
         """
-        if not self.full_history:
-            logging.info("No history to save")
-            return (None, None)
+        try:
+            if not self.full_history:
+                logging.info("No history to save")
+                return (None, None)
+            
+            # Initialize summary if needed
+            if not self.summary:
+                self.summary = ContextSummary()
+            # Always ensure we have a valid summary before saving
+            if not self.summary:
+                logging.info("Creating new summary before saving")
+                self.summary = ContextSummary()
             
         # Ensure summary is up to date
         self._update_summary()
@@ -884,52 +893,94 @@ class Assistant:
         Args:
             load_previous: If True, loads only the summary from previous context (default True)
         """
-        # Save current context before resetting
+        logging.info("Starting assistant reset process")
+        preserved_summary = None
+        
+        # Only attempt to save if we have conversation history
         if self.conversation_history:
             try:
-                # Initialize summary if it doesn't exist
-                if not self.memory.summary:
-                    self.memory.summary = ContextSummary()
-                
-                # Update and save context
+                logging.info("Updating memory summary before saving context")
+                # Force update summary before saving
                 self.memory._update_summary()
-                full_file, baton_file = await self.memory.save_context()
+                # Preserve current summary
+                if self.memory.summary:
+                    preserved_summary = ContextSummary(
+                        key_points=self.memory.summary.key_points.copy(),
+                        decisions=self.memory.summary.decisions.copy(),
+                        important_context=self.memory.summary.important_context,
+                        last_updated=self.memory.summary.last_updated
+                    )
+                    logging.info(f"Preserved current summary from {preserved_summary.last_updated}")
                 
-                if full_file and baton_file:
-                    self.console.print(f"\n[green]Context saved to {full_file} and {baton_file}[/green]")
+                # Attempt to save context
+                save_result = await self.save_context()
+                if save_result is not None:
+                    full_file, baton_file = save_result
+                    # Log success but differentiate between full and partial saves
+                    if full_file and baton_file:
+                        logging.info(f"Context fully saved to {full_file} and {baton_file}")
+                        self.console.print(f"\n[green]Context fully saved to {full_file} and {baton_file}[/green]")
+                    elif full_file:
+                        logging.info(f"Only full history saved to {full_file}")
+                        self.console.print(f"\n[yellow]Only full history saved to {full_file}[/yellow]")
+                    else:
+                        logging.warning("Failed to save context files")
+                        self.console.print("[yellow]Failed to save context files[/yellow]")
                 else:
-                    self.console.print("[yellow]Warning: Failed to save context before reset[/yellow]")
-                    
+                    logging.info("No context saved - save_context returned None")
+                    self.console.print("[yellow]No context to save before reset[/yellow]")
             except Exception as e:
                 logging.error(f"Error saving context during reset: {str(e)}")
                 self.console.print("[red]Error saving context before reset[/red]")
 
         # Cancel auto-save task if running
         if self.auto_save_task and not self.auto_save_task.done():
-        if self.auto_save_task:
+            logging.info("Cancelling auto-save task")
             self.auto_save_task.cancel()
             try:
                 await self.auto_save_task
             except asyncio.CancelledError:
+                logging.info("Auto-save task cancelled successfully")
                 pass
 
-        # Create a final summary before clearing
-        if self.memory.full_history:
-            self.memory._update_summary()
-            
-        # Clear current state
+        # Clear current state while preserving summary if needed
+        logging.info("Clearing current conversation state")
         self.conversation_history = []
         self.total_tokens_used = 0
         
-        # Load only summary from previous context if requested
         if load_previous:
+            logging.info("Attempting to load previous context")
+            # First try to load from context files
             success = self.memory.load_context(load_full=False)
-            if success:
-                self.console.print("[green]Previous context summary restored from baton[/green]")
-                self.console.print("[cyan]Note: Only the context summary is loaded to maintain efficiency[/cyan]")
+            
+            if success and self.memory.summary:
+                logging.info("Successfully loaded context from baton")
+                # Initialize conversation with loaded summary
+                self.conversation_history.append({
+                    "role": "system",
+                    "content": self.memory.get_current_context()
+                })
+                self.console.print("[green]Previous context summary restored and initialized[/green]")
+                self.console.print("[cyan]Context continuity maintained with previous session[/cyan]")
+            elif preserved_summary:
+                logging.info("Using preserved summary as fallback")
+                self.memory.summary = preserved_summary
+                self.conversation_history.append({
+                    "role": "system",
+                    "content": self.memory.get_current_context()
+                })
+                self.console.print("[yellow]Using preserved context summary[/yellow]")
             else:
+                logging.warning("No previous context found to restore")
                 self.console.print("[yellow]No previous context found to restore[/yellow]")
+                # Initialize fresh summary
+                self.memory.summary = ContextSummary()
+        else:
+            logging.info("Skipping previous context load as requested")
+            self.memory.summary = ContextSummary()
+        
         self.console.print("\n[bold green]\U0001F504 Assistant memory has been reset![/bold green]")
+        logging.info("Reset process completed successfully")
 
         welcome_text = """
         # Claude Engineer v3. A self-improving assistant framework with tool creation
