@@ -1,11 +1,13 @@
-from typing import Dict, List, Optional, Any
-from pathlib import Path
-from tools.basetool import BaseTool
 import logging
 import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 # Import the MCP Memory Service
-from tools.mcp_memory.src.mcp_memory_service import MemoryService
+from mcp_memory.src.mcp_memory_service import MemoryService
+
+from tools.base import BaseTool
+
 
 class MCPMemoryTool(BaseTool):
     """Tool for interacting with the MCP Memory Service
@@ -216,4 +218,3 @@ class MCPMemoryTool(BaseTool):
         except Exception as e:
             self.logger.error(f"Failed to clear memories: {str(e)}")
             raise
-

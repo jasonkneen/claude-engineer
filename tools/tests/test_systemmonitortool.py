@@ -1,8 +1,9 @@
-import pytest
-from pathlib import Path
-import json
 import csv
-from ..systemmonitortool import SystemMonitorTool
+import json
+from pathlib import Path
+
+from tools.systemmonitortool import SystemMonitorTool
+
 
 def test_system_monitor_tool_initialization():
     tool = SystemMonitorTool()
@@ -36,7 +37,7 @@ def test_monitor_json_output(tmp_path):
     assert 'Successfully' in result
     
     # Verify JSON format
-    with open(output_file) as f:
+    with open(output_file, encoding='utf-8') as f:
         for line in f:
             data = json.loads(line)
             assert 'timestamp' in data
@@ -57,7 +58,7 @@ def test_monitor_csv_output(tmp_path):
     assert 'Successfully' in result
     
     # Verify CSV format
-    with open(output_file) as f:
+    with open(output_file, encoding='utf-8') as f:
         reader = csv.DictReader(f)
         headers = reader.fieldnames
         assert 'timestamp' in headers
@@ -80,7 +81,7 @@ def test_monitor_with_resource_filter():
     assert 'Successfully' in result
     
     # Verify only requested resources are present
-    with open(output_file) as f:
+    with open(output_file, encoding='utf-8') as f:
         data = json.loads(f.readline())
         assert set(data.keys()) == {'timestamp', 'cpu', 'memory'}
     
