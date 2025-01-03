@@ -1,35 +1,29 @@
-
 import json
-from typing import Dict, Any
+from typing import Dict, Any, Callable, Awaitable
 
 class MethodHandler:
     def __init__(self):
-        self.methods = {}
+        self.methods: Dict[str, Callable[[Dict[str, Any]], Awaitable[Any]]] = {}
+        
+    def add_method(self, name: str, handler: Callable[[Dict[str, Any]], Awaitable[Any]]) -> None:
+        """Register a new method handler."""
+        self.methods[name] = handler
+        
+    async def setup(self) -> None:
+        """Perform any necessary setup."""
+        pass
+        
+    async def cleanup(self) -> None:
+        """Cleanup any resources."""
+        pass
         
     async def handle(self, request: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(request, dict):
             return self._error_response(-32600, "Invalid Request")
             
-        method = request.get("method")
-        if not method in self.methods:
-            return self._error_response(-32601, "Method not found")
-            
-        try:
-            result = await self.methods[method](request.get("params", {}))
-            return {
-                "jsonrpc": "2.0",
-                "result": result,
-                "id": request.get("id")
-            }
-        except Exception as e:
-            return self._error_response(-32603, str(e))
-            
     def _error_response(self, code: int, message: str) -> Dict[str, Any]:
         return {
             "jsonrpc": "2.0",
-            "error": {
-                "code": code,
-                "message": message
-            },
+            "error": {"code": code, "message": message},
             "id": None
         }

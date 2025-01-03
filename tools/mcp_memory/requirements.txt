@@ -1,0 +1,4 @@
+chromadb==0.5.23
+sentence-transformers>=2.2.2
+tokenizers==0.20.3
+websockets>=11.0.3

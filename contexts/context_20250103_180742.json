@@ -1,0 +1,18 @@
+{
+  "timestamp": "20250103_180742",
+  "full_history": [
+    {
+      "role": "user",
+      "content": "can you test the memory mcp tool that was just created"
+    },
+    {
+      "role": "user",
+      "content": "res"
+    },
+    {
+      "role": "user",
+      "content": "can you test the memorypersistencetool"
+    }
+  ],
+  "total_tokens": 0
+}

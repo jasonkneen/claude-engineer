@@ -1,0 +1,22 @@
+{
+  "timestamp": "20250103_180919",
+  "full_history": [
+    {
+      "role": "user",
+      "content": "can you test the memory mcp tool that was just created"
+    },
+    {
+      "role": "user",
+      "content": "res"
+    },
+    {
+      "role": "user",
+      "content": "can you test the memorypersistencetool"
+    },
+    {
+      "role": "user",
+      "content": "can you do a git commit checkpoint"
+    }
+  ],
+  "total_tokens": 0
+}

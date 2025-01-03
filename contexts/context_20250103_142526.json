@@ -1,0 +1,26 @@
+{
+  "timestamp": "20250103_142526",
+  "full_history": [
+    {
+      "role": "user",
+      "content": "hello"
+    },
+    {
+      "role": "user",
+      "content": "ok we started to crete a realtimevoice tool can you check that"
+    },
+    {
+      "role": "user",
+      "content": "what was that?"
+    },
+    {
+      "role": "user",
+      "content": "ok we ran out of context, we need to be sure that we're not eating up context when it's not required. how can we stop this happening"
+    },
+    {
+      "role": "user",
+      "content": "ok we need to fix the context issue, why are we not offloading context as we were supposed to do, caching prompts and offloading context to some sort of RAG storage locally"
+    }
+  ],
+  "total_tokens": 0
+}

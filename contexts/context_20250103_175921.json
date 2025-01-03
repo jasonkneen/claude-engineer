@@ -1,0 +1,10 @@
+{
+  "timestamp": "20250103_175921",
+  "full_history": [
+    {
+      "role": "user",
+      "content": "can you test the memory mcp tool that was just created"
+    }
+  ],
+  "total_tokens": 0
+}

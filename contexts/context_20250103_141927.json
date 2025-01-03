@@ -1,0 +1,18 @@
+{
+  "timestamp": "20250103_141927",
+  "full_history": [
+    {
+      "role": "user",
+      "content": "hello"
+    },
+    {
+      "role": "user",
+      "content": "ok we started to crete a realtimevoice tool can you check that"
+    },
+    {
+      "role": "user",
+      "content": "what was that?"
+    }
+  ],
+  "total_tokens": 0
+}

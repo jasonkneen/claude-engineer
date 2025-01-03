@@ -1,0 +1,15 @@
+{
+  "memory": {
+    "command": "uv",
+    "args": [
+      "--directory",
+      "./memory_service_temp",
+      "run",
+      "memory"
+    ],
+    "env": {
+      "MCP_MEMORY_CHROMA_PATH": "./claude_config/mcp-memory/chroma_db",
+      "MCP_MEMORY_BACKUPS_PATH": "./claude_config/mcp-memory/backups"
+    }
+  }
+}

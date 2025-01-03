@@ -33,3 +33,5 @@ dist/
 *.bak
 *.bak-*
 context_full_*.json
+
+.codegpt

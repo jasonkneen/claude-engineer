@@ -1,0 +1,22 @@
+{
+  "timestamp": "20250103_142254",
+  "full_history": [
+    {
+      "role": "user",
+      "content": "hello"
+    },
+    {
+      "role": "user",
+      "content": "ok we started to crete a realtimevoice tool can you check that"
+    },
+    {
+      "role": "user",
+      "content": "what was that?"
+    },
+    {
+      "role": "user",
+      "content": "ok we ran out of context, we need to be sure that we're not eating up context when it's not required. how can we stop this happening"
+    }
+  ],
+  "total_tokens": 0
+}
