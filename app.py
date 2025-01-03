@@ -4,6 +4,7 @@ import os
 from werkzeug.utils import secure_filename
 import base64
 from config import Config
+import asyncio
 
 app = Flask(__name__, static_folder='static')
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -51,7 +52,10 @@ def chat():
     
     try:
         # Handle the chat message with the appropriate content
-        response = assistant.chat(message_content)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        response = loop.run_until_complete(assistant.chat(message_content))
+        loop.close()
         
         # Get token usage from assistant
         token_usage = {
@@ -127,4 +131,4 @@ def reset():
     return jsonify({'status': 'success'})
 
 if __name__ == '__main__':
-    app.run(debug=False) 
+    app.run(debug=False)

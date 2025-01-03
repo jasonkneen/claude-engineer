@@ -1,0 +1,84 @@
+body {
+    margin: 0;
+    padding: 20px;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #f0f2f5;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+header {
+    padding: 20px;
+    background: #1a1a1a;
+    color: white;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+h1 {
+    margin: 0;
+    font-size: 1.5em;
+}
+
+.status-starting {
+    background: #ffd700;
+    color: black;
+    padding: 5px 10px;
+    border-radius: 4px;
+}
+
+.status-running {
+    background: #00ff00;
+    color: black;
+    padding: 5px 10px;
+    border-radius: 4px;
+}
+
+.status-error {
+    background: #ff0000;
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+}
+
+.terminal {
+    background: #1a1a1a;
+    color: #00ff00;
+    padding: 20px;
+    height: 400px;
+    overflow-y: auto;
+    font-family: monospace;
+    white-space: pre-wrap;
+}
+
+.terminal div {
+    margin: 5px 0;
+}
+
+footer {
+    padding: 20px;
+    text-align: right;
+    border-top: 1px solid #eee;
+}
+
+button {
+    background: #1a1a1a;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+button:hover {
+    background: #333;
+}

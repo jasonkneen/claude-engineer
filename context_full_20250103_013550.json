@@ -1,0 +1,9 @@
+{
+  "full_history": [
+    {
+      "role": "user",
+      "content": "hello"
+    }
+  ],
+  "total_tokens": 0
+}

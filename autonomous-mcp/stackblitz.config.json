@@ -1,0 +1,12 @@
+{
+  "installDependencies": true,
+  "startCommand": "python -m mcp.server --auto-bootstrap",
+  "env": {
+    "PYTHON_VERSION": "3.11",
+    "PYTHONPATH": "/app",
+    "MCP_SELF_LEARNING": "1",
+    "MCP_AUTO_INSTALL": "1",
+    "MCP_TOOL_CREATION": "1"
+  },
+  "port": 8000
+}

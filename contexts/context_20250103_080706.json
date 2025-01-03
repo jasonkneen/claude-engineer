@@ -1,0 +1,14 @@
+{
+  "timestamp": "20250103_080706",
+  "full_history": [
+    {
+      "role": "user",
+      "content": "how many planets in the solar system\\"
+    },
+    {
+      "role": "user",
+      "content": "and how many are there again?"
+    }
+  ],
+  "total_tokens": 0
+}

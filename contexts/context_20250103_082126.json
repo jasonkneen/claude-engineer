@@ -1,0 +1,38 @@
+{
+  "timestamp": "20250103_082126",
+  "full_history": [
+    {
+      "role": "user",
+      "content": "ok let's render some json"
+    },
+    {
+      "role": "user",
+      "content": "is that using the tooling? just reonder a context json"
+    },
+    {
+      "role": "user",
+      "content": "nice, now we don't need to see the input, just render the output"
+    },
+    {
+      "role": "user",
+      "content": "can you mod the tool to not show the input"
+    },
+    {
+      "role": "user",
+      "content": "ok now render the readme.md and let's see what markdown looks like"
+    },
+    {
+      "role": "user",
+      "content": "ok so that's terrible if we're rendering json we render json but if we're rendering other content let's render the raw content formatted"
+    },
+    {
+      "role": "user",
+      "content": "yes"
+    },
+    {
+      "role": "user",
+      "content": "LOVE IT can we make sure that we trim spaces from start and end"
+    }
+  ],
+  "total_tokens": 0
+}

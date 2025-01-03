@@ -1,0 +1,25 @@
+{
+  "tasks": [
+    {
+      "id": "mcp_transport_system",
+      "description": "Implement complete MCP transport system with HTTP/REST and SSE support",
+      "status": "in_progress",
+      "category": "core"
+    },
+    {
+      "id": "http_base",
+      "description": "HTTP Base Implementation",
+      "status": "ready",
+      "category": "transport"
+    },
+    {
+      "id": "sse_core",
+      "description": "SSE Core Implementation",
+      "status": "pending",
+      "category": "transport",
+      "dependencies": [
+        "http_base"
+      ]
+    }
+  ]
+}

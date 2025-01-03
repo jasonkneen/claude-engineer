@@ -1,0 +1,22 @@
+{
+  "timestamp": "20250103_081729",
+  "full_history": [
+    {
+      "role": "user",
+      "content": "can you create a tool to render JSON nicely here?"
+    },
+    {
+      "role": "user",
+      "content": "yes"
+    },
+    {
+      "role": "user",
+      "content": "ok lets show one of the json files in the folder or contexts folder"
+    },
+    {
+      "role": "user",
+      "content": "that looks shit"
+    }
+  ],
+  "total_tokens": 0
+}

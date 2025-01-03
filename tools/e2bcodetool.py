@@ -1,6 +1,5 @@
 from tools.base import BaseTool
 from e2b_code_interpreter import Sandbox
-from dotenv import load_dotenv
 import os
 import time
 import json
@@ -53,7 +52,8 @@ class E2bCodeTool(BaseTool):
 
     def execute(self, **kwargs) -> str:
         try:
-            load_dotenv()
+            # Set E2B API key
+            os.environ["E2B_API_KEY"] = "e2b_399f94f69517ae7ac543d30d105834063344375b"
             
             code = kwargs.get("code")
             upload_files = kwargs.get("upload_files", [])

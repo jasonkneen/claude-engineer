@@ -1,0 +1,10 @@
+{
+  "timestamp": "20250103_081340",
+  "full_history": [
+    {
+      "role": "user",
+      "content": "testing 123"
+    }
+  ],
+  "total_tokens": 0
+}

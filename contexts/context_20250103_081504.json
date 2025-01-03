@@ -1,0 +1,18 @@
+{
+  "timestamp": "20250103_081504",
+  "full_history": [
+    {
+      "role": "user",
+      "content": "testing 123"
+    },
+    {
+      "role": "user",
+      "content": "where were we?"
+    },
+    {
+      "role": "user",
+      "content": "what did the baton load into context?"
+    }
+  ],
+  "total_tokens": 0
+}

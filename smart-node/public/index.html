@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SmartNode WebContainer Interface</title>
+    <link rel="stylesheet" href="style.css">
+    <script type="module">
+        import { WebContainer } from 'https://cdn.jsdelivr.net/npm/@webcontainer/api@1.1.0/dist/index.js';
+
+        class SmartNodeContainer {
+            constructor() {
+                this.instanceId = Math.random().toString(36).substring(7);
+                this.status = document.getElementById('status');
+                this.terminal = document.getElementById('terminal');
+            }
+
+            log(message) {
+                const line = document.createElement('div');
+                line.textContent = `[${new Date().toISOString()}] ${message}`;
+                this.terminal.appendChild(line);
+                this.terminal.scrollTop = this.terminal.scrollHeight;
+            }
+
+            async init() {
+                try {
+                    this.log('Booting WebContainer...');
+                    this.container = await WebContainer.boot();
+                    
+                    this.log('Fetching SmartNode source...');
+                    const response = await fetch('/api/self');
+                    const files = await response.json();
+
+                    this.log('Mounting files...');
+                    await this.container.mount({
+                        'smart_node.js': {
+                            file: { contents: files['smart_node.js'] }
+                        },
+                        'package.json': {
+                            file: { contents: files['package.json'] }
+                        },
+                        'public': {
+                            directory: {
+                                'index.html': {
+                                    file: { contents: files['public/index.html'] }
+                                },
+                                'style.css': {
+                                    file: { contents: files['public/style.css'] }
+                                }
+                            }
+                        }
+                    });
+
+                    this.log('Installing dependencies...');
+                    const install = await this.container.spawn('npm', ['install']);
+                    install.output.pipeTo(new WritableStream({
+                        write: (chunk) => this.log(chunk)
+                    }));
+                    await install.exit;
+
+                    this.log('Starting SmartNode...');
+                    const process = await this.container.spawn('node', ['smart_node.js']);
+                    process.output.pipeTo(new WritableStream({
+                        write: (chunk) => this.log(chunk)
+                    }));
+
+                    this.status.textContent = 'Running';
+                    this.status.className = 'status-running';
+                } catch (error) {
+                    this.log(`Error: ${error.message}`);
+                    this.status.textContent = 'Error';
+                    this.status.className = 'status-error';
+                }
+            }
+        }
+
+        // Initialize when page loads
+        window.addEventListener('load', () => {
+            const container = new SmartNodeContainer();
+            container.init().catch(console.error);
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SmartNode WebContainer Instance</h1>
+            <div id="status" class="status-starting">Starting...</div>
+        </header>
+        
+        <main>
+            <div id="terminal" class="terminal"></div>
+        </main>
+
+        <footer>
+            <button onclick="location.reload()">Restart Instance</button>
+        </footer>
+    </div>
+</body>
+</html>

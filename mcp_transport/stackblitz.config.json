@@ -1,0 +1,9 @@
+{
+  "installDependencies": true,
+  "startCommand": "python main.py",
+  "env": {
+    "PORT": "8000",
+    "NODE_ENV": "development"
+  },
+  "packages": ["python@3.11"]
+}
