@@ -9,10 +9,6 @@
       "content": "Hi there! How can I help you today?"
     }
   ],
-  "system_message": {
-    "role": "system",
-    "content": "You are a helpful assistant."
-  },
   "stats": {
     "prompt_tokens": 0,
     "completion_tokens": 0,

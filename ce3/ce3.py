@@ -1,4 +1,18 @@
 # ce3.py
+import os
+import sys
+
+# Debug print Python path
+print(f"Python path: {sys.path}")
+
+# Add project root to Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Debug print updated path
+print(f"Updated Python path: {sys.path}")
+
 from anthropic import AsyncAnthropic
 import asyncio
 import aiofiles
