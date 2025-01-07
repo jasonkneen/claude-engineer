@@ -6,11 +6,13 @@ import json
 import logging
 import os
 import pkgutil
+import platform
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import anthropic
-from prompt_toolkit import prompt
+import psutil
+from prompt_toolkit.shortcuts import PromptSession
 from prompt_toolkit.styles import Style
 from rich.console import Console
 from rich.live import Live
@@ -19,6 +21,9 @@ from rich.panel import Panel
 from rich.spinner import Spinner
 
 from config import Config
+
+# Default spinner cleanup timeout in seconds (shorter for better CLI responsiveness)
+SPINNER_CLEANUP_TIMEOUT = getattr(Config, 'SPINNER_CLEANUP_TIMEOUT', 2.0)
 from prompts.system_prompts import SystemPrompts
 from tools.base import BaseTool
 from tools.contextmanager import ContextManager
@@ -43,8 +48,8 @@ class Assistant:
         if not getattr(Config, 'ANTHROPIC_API_KEY', None):
             raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
 
-        # Initialize Anthropics client
-        self.client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
+        # Initialize Anthropics async client for proper async support
+        self.client = anthropic.AsyncAnthropic(api_key=Config.ANTHROPIC_API_KEY)
 
         self.conversation_history: List[Dict[str, Any]] = []
         self.console = Console()
@@ -335,13 +340,16 @@ class Assistant:
 
         self.console.print("---")
 
-    def _get_completion(self):
+    async def _get_completion(self) -> str:
         """
         Get a completion from the Anthropic API.
         Handles both text-only and multimodal messages.
+        Returns:
+            str: The response text or error message
         """
         try:
-            response = self.client.messages.create(
+            # Use async client's create method
+            response = await self.client.messages.create(
                 model=Config.MODEL,
                 max_tokens=min(
                     Config.MAX_TOKENS,
@@ -373,20 +381,33 @@ class Assistant:
                         if content_block.type == "tool_use":
                             result = self._execute_tool(content_block)
                             
-                            # Handle structured data (like image blocks) vs text
-                            if isinstance(result, (list, dict)):
-                                tool_results.append({
-                                    "type": "tool_result",
-                                    "tool_use_id": content_block.id,
-                                    "content": result  # Keep structured data intact
-                                })
+                            # Ensure result is JSON serializable
+                            if hasattr(result, 'text'):  # Handle TextBlock objects
+                                serialized_result = str(result.text)
+                            elif isinstance(result, (list, dict)):
+                                # Keep structured data intact but ensure it's serializable
+                                try:
+                                    # Test JSON serialization
+                                    json.dumps(result)
+                                    serialized_result = result
+                                except (TypeError, json.JSONDecodeError):
+                                    # If serialization fails, convert to string
+                                    serialized_result = str(result)
                             else:
-                                # Convert text results to proper content blocks
-                                tool_results.append({
-                                    "type": "tool_result",
-                                    "tool_use_id": content_block.id,
-                                    "content": [{"type": "text", "text": str(result)}]
-                                })
+                                serialized_result = str(result)
+
+                            # Create the tool result with serializable content
+                            tool_result = {
+                                "type": "tool_result",
+                                "tool_use_id": content_block.id,
+                            }
+
+                            if isinstance(serialized_result, (list, dict)):
+                                tool_result["content"] = serialized_result
+                            else:
+                                tool_result["content"] = [{"type": "text", "text": serialized_result}]
+
+                            tool_results.append(tool_result)
 
                     # Append tool usage to conversation and continue
                     self.conversation_history.append({
@@ -407,10 +428,33 @@ class Assistant:
             if (getattr(response, 'content', None) and 
                 isinstance(response.content, list) and 
                 response.content):
-                final_content = response.content[0].text
+                # Ensure content is serializable before adding to history
+                serializable_content = []
+                for content_item in response.content:
+                    if hasattr(content_item, 'type'):
+                        if content_item.type == 'text':
+                            serializable_content.append({
+                                'type': 'text',
+                                'text': content_item.text
+                            })
+                        elif content_item.type == 'tool_use':
+                            serializable_content.append({
+                                'type': 'tool_use',
+                                'id': content_item.id,
+                                'name': content_item.name,
+                                'input': content_item.input
+                            })
+                    else:
+                        # Handle any other type by converting to string
+                        serializable_content.append({
+                            'type': 'text',
+                            'text': str(content_item)
+                        })
+                
+                final_content = serializable_content[0]['text'] if serializable_content else "No response content available."
                 self.conversation_history.append({
                     "role": "assistant",
-                    "content": response.content
+                    "content": serializable_content
                 })
                 return final_content
             else:
@@ -421,64 +465,152 @@ class Assistant:
             logging.error(f"Error in _get_completion: {str(e)}")
             return f"Error: {str(e)}"
 
-     def _capture_conversation_context(self):
+    async def _capture_conversation_context(self):
         """
         Capture and summarize the current conversation context.
         """
         if not self.conversation_history:
             return
-            
+
         # Convert conversation history to a structured format for context
         context_data = json.dumps(self.conversation_history, indent=2)
-        
+
         # Capture and summarize context
         await self.context_manager.capture_context(context_data)
-    
+
     def get_latest_context_summary(self) -> Optional[Dict]:
         """
         Retrieve the most recent context summary.
         """
         return self.context_manager.get_latest_context(include_full=False)
-    
+
     def get_all_context_summaries(self, include_archived: bool = False) -> List[Dict]:
         """
         Retrieve all available context summaries.
         """
         return self.context_manager.get_all_summaries(include_archived=include_archived)
 
-    def chat(self, user_input):
+    async def _show_thinking_spinner(self):
+        """
+        Async context manager for showing thinking spinner.
+        """
+        spinner = Spinner('dots', text='Thinking...', style="cyan")
+        with Live(spinner, refresh_per_second=10, transient=True) as live:
+            try:
+                while True:
+                    await asyncio.sleep(0.1)
+                    live.refresh()
+            except asyncio.CancelledError:
+                pass
+
+    async def chat(self, user_input: Union[str, List[Any]]) -> str:
         """
         Process a chat message from the user.
         user_input can be either a string (text-only) or a list (multimodal message)
+        
+        Args:
+            user_input: The input message from the user
+            
+        Returns:
+            str: The response message
+            
+        Raises:
+            ValueError: If the input is empty or contains only whitespace
         """
-        # Handle special commands only for text-only messages
+        # Validate input is not empty or whitespace
         if isinstance(user_input, str):
-            if user_input.lower() == 'refresh':
+            if not user_input.strip():
+                return "Message cannot be empty or contain only whitespace"
+            
+            # Handle special commands
+            cmd = user_input.lower()
+            if cmd == 'refresh':
                 self.refresh_tools()
                 return "Tools refreshed successfully!"
-            elif user_input.lower() == 'reset':
-                self.reset()
+            elif cmd == 'reset':
+                await self.reset()
                 return "Conversation reset!"
-            elif user_input.lower() == 'quit':
+            elif cmd == 'quit':
                 return "Goodbye!"
 
         try:
-            # Add user message to conversation history
+            # Ensure user input is properly serialized and validated
+            if isinstance(user_input, str):
+                # Validate string content
+                if not user_input.strip():
+                    return "Message cannot be empty or contain only whitespace"
+                serialized_input = [{"type": "text", "text": user_input}]
+            elif isinstance(user_input, list):
+                if not user_input:
+                    return "Message list cannot be empty"
+                    
+                serialized_input = []
+                for item in user_input:
+                    if hasattr(item, 'text'):  # Handle TextBlock objects
+                        text = str(item.text)
+                        if text.strip():  # Only add non-empty text
+                            serialized_input.append({"type": "text", "text": text})
+                    elif isinstance(item, dict):
+                        # Keep structured data intact but ensure it's serializable
+                        try:
+                            json.dumps(item)  # Test JSON serialization
+                            serialized_input.append(item)
+                        except (TypeError, json.JSONDecodeError):
+                            text = str(item)
+                            if text.strip():  # Only add non-empty text
+                                serialized_input.append({"type": "text", "text": text})
+                    else:
+                        text = str(item)
+                        if text.strip():  # Only add non-empty text
+                            serialized_input.append({"type": "text", "text": text})
+                            
+                if not serialized_input:
+                    return "Message cannot contain only empty or whitespace content"
+            else:
+                serialized_input = [{"type": "text", "text": str(user_input)}]
+
+            # Add serialized user message to conversation history
             self.conversation_history.append({
                 "role": "user",
-                "content": user_input  # This can be either string or list
+                "content": serialized_input
             })
 
             # Show thinking indicator if enabled
             if self.thinking_enabled:
-                with Live(Spinner('dots', text='Thinking...', style="cyan"), 
-                         refresh_per_second=10, transient=True):
-                    response = self._get_completion()
+                # Create and start the spinner task as a background process
+                # This task will run independently until we cancel it
+                spinner_task = asyncio.create_task(self._show_thinking_spinner())
+                try:
+                    # Execute the main operation while spinner runs
+                    response = await self._get_completion()
+                finally:
+                    # Always ensure proper cleanup of the spinner task
+                    # We cancel the task and wait for it to complete with a configurable timeout
+                    # to prevent potential hangs during cleanup
+                    spinner_task.cancel()
+                    try:
+                        # Wait for task cleanup with configured timeout
+                        await asyncio.wait_for(spinner_task, timeout=SPINNER_CLEANUP_TIMEOUT)
+                    except asyncio.CancelledError:
+                        # Expected cancellation, task cleaned up successfully
+                        pass
+                    except asyncio.TimeoutError:
+                        # Log detailed system info with timeout
+                        mem = psutil.virtual_memory()
+                        cpu_percent = psutil.cpu_percent(interval=0.1)
+                        logging.warning(
+                            f"Spinner task cleanup timed out after {SPINNER_CLEANUP_TIMEOUT}s. "
+                            f"System info: CPU: {cpu_percent}%, Memory: {mem.percent}% used, "
+                            f"Platform: {platform.system()} {platform.release()}"
+                        )
+                    except Exception as e:
+                        # Log unexpected errors during task cleanup with stack trace
+                        logging.error(f"Error cleaning up spinner task: {str(e)}", exc_info=True)
             else:
-                response = self._get_completion()
+                response = await self._get_completion()
 
             # Capture context after successful response
-            self._capture_conversation_context()
+            await self._capture_conversation_context()
             
             return response
 
@@ -486,17 +618,58 @@ class Assistant:
             logging.error(f"Error in chat: {str(e)}")
             return f"Error: {str(e)}"
 
-    def reset(self):
+    async def reset(self):
         """
         Reset the assistant's memory and token usage.
-        """
-        # Capture final context before reset if there's conversation history
-        if self.conversation_history:
-            self._capture_conversation_context()
+        Ensures proper cleanup of conversation context before resetting.
+        
+        This is an async operation because it needs to capture the final context
+        before clearing the conversation history.
+        
+        The reset operation includes:
+        1. Capturing final context if there's conversation history
+        2. Clearing conversation history
+        3. Resetting token usage counter
+        
+        Returns:
+            None
             
-        self.conversation_history = []
-        self.total_tokens_used = 0
-        self.console.print("\n[bold green]🔄 Assistant memory has been reset![/bold green]")
+        Raises:
+            asyncio.TimeoutError: If context capture times out
+            Exception: For other errors during reset
+        """
+        try:
+            # Capture final context before reset if there's conversation history
+            if self.conversation_history:
+                try:
+                    # Use a shorter timeout for context capture
+                    await asyncio.wait_for(
+                        self._capture_conversation_context(),
+                        timeout=min(SPINNER_CLEANUP_TIMEOUT, 1.0)  # Use shorter timeout for better responsiveness
+                    )
+                except asyncio.TimeoutError:
+                    # Get system info for better error context
+                    mem = psutil.virtual_memory()
+                    cpu_percent = psutil.cpu_percent(interval=0.1)
+                    logging.warning(
+                        f"Context capture timed out during reset. "
+                        f"System info: CPU: {cpu_percent}%, Memory: {mem.percent}% used"
+                    )
+                except Exception as e:
+                    logging.error(
+                        f"Error capturing final context during reset: {str(e)}",
+                        exc_info=True
+                    )
+            
+            # Clear conversation history and reset token usage
+            self.conversation_history = []
+            self.total_tokens_used = 0
+            self.console.print("\n[bold green]🔄 Assistant memory has been reset![/bold green]")
+        except Exception as e:
+            error_msg = f"Critical error during reset operation: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            self.console.print(f"\n[bold red]Error:[/bold red] {error_msg}")
+            raise  # Re-raise to ensure caller knows about the failure
 
         welcome_text = """
 # Claude Engineer v3. A self-improving assistant framework with tool creation
@@ -518,6 +691,7 @@ async def main():
     """
     console = Console()
     style = Style.from_dict({'prompt': 'orange'})
+    session = PromptSession(style=style)
 
     try:
         assistant = Assistant()
@@ -540,19 +714,35 @@ Available tools:
 
     while True:
         try:
-            user_input = prompt("You: ", style=style).strip()
+            user_input = (await session.prompt_async("You: ")).strip()
 
             if user_input.lower() == 'quit':
-                console.print("\n[bold blue]👋 Goodbye![/bold blue]")
+                console.print("\n[bold blue]\U0001F44B Goodbye![/bold blue]")
                 break
             elif user_input.lower() == 'reset':
-                assistant.reset()
+                await assistant.reset()
                 continue
 
-            response = await assistant.chat(user_input)
+            try:
+                response = await assistant.chat(user_input)
+            except anthropic.APIConnectionError as conn_error:
+                console.print(f"\n[bold red]Connection Error:[/bold red] {str(conn_error)}")
+                continue
+            except anthropic.RateLimitError as rate_error:
+                console.print(f"\n[bold red]Rate Limit Error:[/bold red] {str(rate_error)}")
+                continue
+            except anthropic.APIError as api_error:
+                console.print(f"\n[bold red]API Error:[/bold red] {str(api_error)}")
+                continue
+            except asyncio.TimeoutError:
+                console.print("\n[bold red]Request timed out[/bold red]")
+                continue
+            except Exception as chat_error:
+                console.print(f"\n[bold red]Unexpected Error:[/bold red] {str(chat_error)}")
+                continue
             console.print("\n[bold purple]Claude Engineer:[/bold purple]")
             if isinstance(response, str):
-                safe_response = response.replace('[', '\\[').replace(']', '\\]')
+                safe_response = response.replace('[', '\[').replace(']', '\]')
                 console.print(safe_response)
             else:
                 console.print(str(response))
@@ -564,4 +754,12 @@ Available tools:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except RuntimeError as e:
+        if "cannot be called from a running event loop" in str(e):
+            # If we're already in an event loop, just run the coroutine
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(main())
+        else:
+            raise

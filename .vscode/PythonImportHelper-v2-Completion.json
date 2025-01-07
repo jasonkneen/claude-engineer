@@ -699,6 +699,14 @@
         "documentation": {}
     },
     {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "List",
         "importPath": "typing",
         "description": "typing",
@@ -1011,14 +1019,6 @@
     },
     {
         "label": "PromptSession",
-        "importPath": "prompt_toolkit",
-        "description": "prompt_toolkit",
-        "isExtraImport": true,
-        "detail": "prompt_toolkit",
-        "documentation": {}
-    },
-    {
-        "label": "prompt",
         "importPath": "prompt_toolkit",
         "description": "prompt_toolkit",
         "isExtraImport": true,
@@ -1733,6 +1733,14 @@
         "importPath": "psutil",
         "description": "psutil",
         "detail": "psutil",
+        "documentation": {}
+    },
+    {
+        "label": "PromptSession",
+        "importPath": "prompt_toolkit.shortcuts",
+        "description": "prompt_toolkit.shortcuts",
+        "isExtraImport": true,
+        "detail": "prompt_toolkit.shortcuts",
         "documentation": {}
     },
     {
@@ -3973,6 +3981,15 @@
         "importPath": "ce3prime",
         "description": "ce3prime",
         "peekOfCode": "class Assistant:\n    \"\"\"\n    The Assistant class manages:\n    - Loading of tools from a specified directory.\n    - Interaction with the Anthropics API (message completion).\n    - Handling user commands such as 'refresh' and 'reset'.\n    - Token usage tracking and display.\n    - Tool execution upon request from model responses.\n    \"\"\"\n    def __init__(self):",
+        "detail": "ce3prime",
+        "documentation": {}
+    },
+    {
+        "label": "SPINNER_CLEANUP_TIMEOUT",
+        "kind": 5,
+        "importPath": "ce3prime",
+        "description": "ce3prime",
+        "peekOfCode": "SPINNER_CLEANUP_TIMEOUT = getattr(Config, 'SPINNER_CLEANUP_TIMEOUT', 2.0)\nfrom prompts.system_prompts import SystemPrompts\nfrom tools.base import BaseTool\nfrom tools.contextmanager import ContextManager\n# Configure logging to only show ERROR level and above\nlogging.basicConfig(\n    level=logging.ERROR,\n    format='%(levelname)s: %(message)s'\n)\nclass Assistant:",
         "detail": "ce3prime",
         "documentation": {}
     },

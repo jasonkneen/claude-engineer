@@ -244,7 +244,9 @@ class Assistant:
         elif isinstance(data, dict):
             return self._clean_parsed_data(data)
         else:
-            return data
+            return dataERROR: Error in chat: Object of type TextBlock is not JSON serializable
+/Users/jkneen/Documents/GitHub/claude-engineer/ce3.py:727: RuntimeWarning: coroutine 'Assistant._get_completion' was never awaited
+  response = await assistant.chat(user_input)
 
     def _clean_parsed_data(self, data):
         """
