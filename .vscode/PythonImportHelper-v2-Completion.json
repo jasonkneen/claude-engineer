@@ -603,6 +603,14 @@
         "documentation": {}
     },
     {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "List",
         "importPath": "typing",
         "description": "typing",
@@ -846,6 +854,14 @@
         "importPath": "time",
         "description": "time",
         "detail": "time",
+        "documentation": {}
+    },
+    {
+        "label": "Console",
+        "importPath": "rich.console",
+        "description": "rich.console",
+        "isExtraImport": true,
+        "detail": "rich.console",
         "documentation": {}
     },
     {
@@ -1259,6 +1275,14 @@
         "description": "abc",
         "isExtraImport": true,
         "detail": "abc",
+        "documentation": {}
+    },
+    {
+        "label": "BaseTool",
+        "importPath": "tools.base",
+        "description": "tools.base",
+        "isExtraImport": true,
+        "detail": "tools.base",
         "documentation": {}
     },
     {
@@ -3806,6 +3830,15 @@
         "description": "tools.screenshottool",
         "peekOfCode": "class ScreenshotTool(BaseTool):\n    name = \"screenshottool\"\n    description = '''\n    Captures a screenshot of the current screen and returns an image block ready to be sent to Claude.\n    Optionally, a specific region of the screen can be captured by providing coordinates.\n    Inputs:\n    - region (optional): A list of four integers [x, y, width, height] specifying the region of the screen to capture.\n      If omitted, captures the entire screen.\n    The output is a JSON-formatted string that can be included directly as part of the conversation content:\n    [",
         "detail": "tools.screenshottool",
+        "documentation": {}
+    },
+    {
+        "label": "SelfEvolverTool",
+        "kind": 6,
+        "importPath": "tools.selfevolver",
+        "description": "tools.selfevolver",
+        "peekOfCode": "class SelfEvolverTool(BaseTool):\n    \"\"\"\n    A tool that can propose and apply changes to local Python files, subject to user approval.\n    The LLM can call this tool to self-modify or create new code, if enabled.\n    \"\"\"\n    name = \"self_evolver\"\n    description = (\n        \"Propose and apply code modifications to local files. \"\n        \"Provide a 'filename' and the full new content or a diff in 'content_diff'. \"\n        \"User must confirm before changes are written.\"",
+        "detail": "tools.selfevolver",
         "documentation": {}
     },
     {
