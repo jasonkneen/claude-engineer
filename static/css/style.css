@@ -1,57 +1,136 @@
-/* Custom scrollbar */
-::-webkit-scrollbar {
-    width: 8px;
-}
-::-webkit-scrollbar-track {
-    background: transparent;
-}
-::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+:root {
+    /* Dark theme colors */
+    --bg-primary: #1a1a1a;
+    --bg-secondary: #2a2a2a;
+    --border-color: #333;
+    --text-primary: #e0e0e0;
+    --text-secondary: #999;
+    --text-muted: #666;
+    --accent-color: #10b981;
+    --hover-color: #444;
 }
 
-/* Code block styling */
-pre {
-    background: #f8fafc;
-    border-radius: 6px;
-    padding: 1rem;
-    margin: 0.5rem 0;
-    overflow-x: auto;
+/* Layout */
+body {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
-code {
-    font-family: ui-monospace, monospace;
-    font-size: 0.9em;
+
+.right-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.url-input-container {
+    padding: 0.75rem;
+    background-color: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.split-container {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 45% 4px 1fr;
+    overflow: hidden;
+}
+
+.divider {
+    background-color: var(--border-color);
+    cursor: col-resize;
+    transition: background-color 0.2s;
+}
+
+.divider:hover {
+    background-color: var(--hover-color);
+}
+
+.iframe-container {
+    flex: 1;
+    background-color: var(--bg-primary);
+    overflow: hidden;
 }
 
 /* Chat container styles */
 .chat-container {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100%;
     overflow: hidden;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
 }
 
 .messages-container {
     flex: 1;
     overflow-y: auto;
-    padding: 1rem;
+    padding: 1rem 0;
     padding-bottom: 2rem;
-    max-width: 5xl;
-    margin: 0 auto;
     width: 100%;
 }
 
 .input-container {
-    position: sticky;
-    bottom: 0;
-    background-color: white;
-    border-top: 1px solid #e5e7eb;
+    background-color: var(--bg-primary);
+    border-top: 1px solid var(--border-color);
     padding: 1rem 0;
     width: 100%;
-    box-shadow: 0 -4px 6px -1px rgb(0 0 0 / 0.05);
+    margin-top: auto;
+}
+
+.input-container form {
+    background-color: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.input-container textarea {
+    color: var(--text-primary);
+    background-color: transparent;
+}
+
+.input-container textarea::placeholder {
+    color: var(--text-muted);
+}
+
+.input-container button {
+    color: var(--text-secondary);
+}
+
+.input-container button:hover {
+    color: var(--text-primary);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--hover-color);
+}
+
+/* Code block styling */
+pre {
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    padding: 1rem;
+    margin: 0.5rem 0;
+    overflow-x: auto;
+    color: var(--text-primary);
+}
+code {
+    font-family: ui-monospace, monospace;
+    font-size: 0.9em;
 }
 
 @keyframes pulse {
@@ -63,7 +142,7 @@ code {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: #6b7280;
+    color: var(--text-secondary);
     font-size: 0.875rem;
 }
 
@@ -90,36 +169,33 @@ code {
     animation-delay: 0.4s;
 }
 
-/* Update the messages spacing */
+/* Message styling */
 .message-wrapper {
-    margin: 0 auto 1.5rem;
-    max-width: 5xl;
-    padding: 0 1rem;
+    margin: 0 auto 1rem;
+    padding: 0.5rem 1rem;
 }
 
 .message-wrapper:last-child {
     margin-bottom: 2rem;
 }
 
-/* Special spacing for consecutive messages */
 .message-wrapper + .message-wrapper {
-    margin-top: 1.5rem;
+    margin-top: 0.5rem;
 }
 
-/* Update the primary color to Tailwind black */
 .ai-avatar {
-    background-color: #111827; /* Tailwind black-900 */
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
 }
 
-/* Add to your existing CSS */
 .tool-usage {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: #6b7280;
+    color: var(--text-secondary);
     font-size: 0.875rem;
     padding: 0.5rem 0.75rem;
-    background-color: #f8fafc;
+    background-color: var(--bg-secondary);
     border-radius: 0.5rem;
 }
 
@@ -128,48 +204,38 @@ code {
     font-size: 1rem;
 }
 
-/* Add responsive container styles */
-@media (max-width: 640px) {
-    .input-container {
-        padding: 0.75rem 0;
-    }
-    
-    .messages-container {
-        padding: 0.75rem;
-    }
-}
-
-/* Add these styles to your existing CSS */
+/* Token usage container */
 .token-usage-container {
     position: sticky;
     bottom: 80px;
-    background-color: white;
+    background-color: var(--bg-primary);
     padding: 0.5rem 0;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid var(--border-color);
     z-index: 10;
+    color: var(--text-secondary);
 }
 
 .token-bar-container {
     flex: 1;
     height: 8px;
-    background-color: #f3f4f6;
+    background-color: var(--bg-secondary);
     border-radius: 4px;
     overflow: hidden;
 }
 
 .token-bar {
     height: 100%;
-    background-color: #10b981; /* Green by default */
+    background-color: var(--accent-color);
     border-radius: 4px;
     transition: width 0.3s ease, background-color 0.3s ease;
 }
 
 .token-bar.warning {
-    background-color: #f59e0b; /* Yellow for warning */
+    background-color: #d97706;
 }
 
 .token-bar.danger {
-    background-color: #ef4444; /* Red for danger */
+    background-color: #dc2626;
 }
 
 .token-count {
@@ -181,25 +247,50 @@ code {
     text-align: right;
 }
 
-/* Add these styles to your existing CSS */
 .message-wrapper .prose p {
-    color: #18181B;
+    color: var(--text-primary);
     font-size: 14px;
     line-height: 1.5;
 }
 
-/* For user messages */
 .message-wrapper .prose {
-    color: #18181B;
+    color: var(--text-primary);
     font-size: 14px;
     line-height: 1.5;
 }
 
 .command-code {
-    background-color: #e7f3ed;
-    color: #0a3622;
+    background-color: var(--bg-secondary);
+    color: var(--accent-color);
     padding: 2px 6px;
     border-radius: 4px;
     font-family: monospace;
 }
-  
+
+/* Image preview */
+#image-preview {
+    background-color: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 4px;
+}
+
+#remove-image {
+    background-color: var(--bg-primary);
+    color: var(--text-secondary);
+}
+
+#remove-image:hover {
+    background-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+/* Responsive styles */
+@media (max-width: 640px) {
+    .input-container {
+        padding: 0.75rem 0;
+    }
+    
+    .messages-container {
+        padding: 0.75rem;
+    }
+}

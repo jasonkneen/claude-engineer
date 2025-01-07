@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/marked@4.0.0/marked.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
     <script>
         // Configure marked to use highlight.js
@@ -21,10 +21,13 @@
         });
     </script>
 </head>
-<body class="bg-white">
-    <div class="chat-container">
-        <!-- Messages area -->
-        <div class=" max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 messages-container" id="chat-messages">
+<body class="bg-[#1a1a1a]">
+    <!-- Split view container -->
+    <div class="split-container">
+        <!-- Left panel (chat) -->
+        <div class="chat-container">
+            <!-- Messages area -->
+            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 messages-container" id="chat-messages">
             <!-- Initial message -->
             <div class="message-wrapper initial-message">
                 <div class="flex items-start space-x-4 space-y-1">
@@ -54,7 +57,7 @@
         <!-- Add this right before the input-container div -->
         <div class="token-usage-container">
             <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex items-center space-x-4 text-sm text-gray-500">
+                <div class="flex items-center space-x-4 text-sm text-gray-400">
                     <div class="token-count">Total used: <span id="tokens-used">0</span> / <span id="max-tokens">200,000</span></div>
                     <div class="token-bar-container">
                         <div id="token-bar" class="token-bar" style="width: 0%"></div>
@@ -70,15 +73,15 @@
                 <form id="chat-form" class="relative">
                     <div id="image-preview" class="hidden mb-2">
                         <div class="relative inline-block">
-                            <img id="preview-img" class="max-h-32 rounded-lg border border-gray-200" src="" alt="Preview">
-                            <button type="button" id="remove-image" class="absolute -top-2 -right-2 bg-white rounded-full p-1 shadow-sm hover:bg-gray-100">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+                            <img id="preview-img" class="max-h-32 rounded-lg border border-[#333]" src="" alt="Preview">
+                            <button type="button" id="remove-image" class="absolute -top-2 -right-2 bg-[#1a1a1a] rounded-full p-1 shadow-sm hover:bg-[#333]">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
                                     <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
                                 </svg>
                             </button>
                         </div>
                     </div>
-                    <div class="flex items-end space-x-2 bg-white rounded-xl border border-gray-200 p-3 mx-2">
+                    <div class="flex items-end space-x-2 bg-[#2a2a2a] rounded-xl border border-[#333] p-3 mx-2">
                         <button type="button" id="upload-btn" class="p-2 text-gray-400 hover:text-gray-600">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -88,7 +91,7 @@
                         <textarea id="message-input" 
                             class="flex-1 border-0 bg-transparent p-2 focus:ring-0 focus:outline-none resize-none max-h-32 overflow-y-auto min-h-[2.5rem]"
                             rows="1"
-                            placeholder="Type something... (⌘ + Enter to send)"
+                            placeholder="Enter text..."
                             style="height: 40px; max-height: 200px;"
                         ></textarea>
                         <button type="submit" class="p-2 text-gray-400 hover:text-gray-600">
@@ -100,8 +103,63 @@
                 </form>
             </div>
         </div>
+        </div>
+        <!-- Resizable divider -->
+        <div class="divider" id="divider"></div>
+        <!-- Right panel -->
+        <div class="right-panel">
+            <!-- URL input -->
+            <div class="url-input-container">
+                <input type="text" id="url-input" class="w-full bg-[#2a2a2a] text-[#e0e0e0] border border-[#333] rounded-md px-3 py-1.5 text-sm" placeholder="Enter URL">
+            </div>
+            <!-- Iframe container -->
+            <div class="iframe-container">
+                <iframe id="content-frame" src="about:blank" class="w-full h-full border-none"></iframe>
+            </div>
+        </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+    <script>
+        // Resizable divider functionality
+        const divider = document.getElementById('divider');
+        const container = document.querySelector('.split-container');
+        let isDragging = false;
+
+        divider.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            document.body.style.cursor = 'col-resize';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+
+            const containerRect = container.getBoundingClientRect();
+            const percentage = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+            
+            // Limit the divider movement
+            if (percentage > 30 && percentage < 70) {
+                container.style.gridTemplateColumns = `${percentage}% 4px 1fr`;
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            document.body.style.cursor = 'default';
+        });
+
+        // URL input functionality
+        const urlInput = document.getElementById('url-input');
+        const iframe = document.getElementById('content-frame');
+
+        urlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const url = urlInput.value.trim();
+                if (url) {
+                    iframe.src = url.startsWith('http') ? url : `https://${url}`;
+                }
+            }
+        });
+    </script>
 </body>
-</html> 
+</html>
