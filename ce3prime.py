@@ -1,24 +1,27 @@
 # ce3.py
-import anthropic
-from rich.console import Console
-from rich.markdown import Markdown
-from rich.live import Live
-from rich.spinner import Spinner
-from rich.panel import Panel
-from typing import List, Dict, Any
+import asyncio
 import importlib
 import inspect
-import pkgutil
-import os
 import json
-import sys
 import logging
+import os
+import pkgutil
+import sys
+from typing import Any, Dict, List, Optional
 
-from config import Config
-from tools.base import BaseTool
+import anthropic
 from prompt_toolkit import prompt
 from prompt_toolkit.styles import Style
+from rich.console import Console
+from rich.live import Live
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.spinner import Spinner
+
+from config import Config
 from prompts.system_prompts import SystemPrompts
+from tools.base import BaseTool
+from tools.contextmanager import ContextManager
 
 # Configure logging to only show ERROR level and above
 logging.basicConfig(
@@ -50,6 +53,9 @@ class Assistant:
         self.temperature = getattr(Config, 'DEFAULT_TEMPERATURE', 0.7)
         self.total_tokens_used = 0
 
+        # Initialize context manager
+        self.context_manager = ContextManager()
+        
         self.tools = self._load_tools()
 
     def _execute_uv_install(self, package_name: str) -> bool:
@@ -415,6 +421,31 @@ class Assistant:
             logging.error(f"Error in _get_completion: {str(e)}")
             return f"Error: {str(e)}"
 
+     def _capture_conversation_context(self):
+        """
+        Capture and summarize the current conversation context.
+        """
+        if not self.conversation_history:
+            return
+            
+        # Convert conversation history to a structured format for context
+        context_data = json.dumps(self.conversation_history, indent=2)
+        
+        # Capture and summarize context
+        await self.context_manager.capture_context(context_data)
+    
+    def get_latest_context_summary(self) -> Optional[Dict]:
+        """
+        Retrieve the most recent context summary.
+        """
+        return self.context_manager.get_latest_context(include_full=False)
+    
+    def get_all_context_summaries(self, include_archived: bool = False) -> List[Dict]:
+        """
+        Retrieve all available context summaries.
+        """
+        return self.context_manager.get_all_summaries(include_archived=include_archived)
+
     def chat(self, user_input):
         """
         Process a chat message from the user.
@@ -446,6 +477,9 @@ class Assistant:
             else:
                 response = self._get_completion()
 
+            # Capture context after successful response
+            self._capture_conversation_context()
+            
             return response
 
         except Exception as e:
@@ -456,6 +490,10 @@ class Assistant:
         """
         Reset the assistant's memory and token usage.
         """
+        # Capture final context before reset if there's conversation history
+        if self.conversation_history:
+            self._capture_conversation_context()
+            
         self.conversation_history = []
         self.total_tokens_used = 0
         self.console.print("\n[bold green]🔄 Assistant memory has been reset![/bold green]")
@@ -473,7 +511,7 @@ Available tools:
         self.display_available_tools()
 
 
-def main():
+async def main():
     """
     Entry point for the assistant CLI loop.
     Provides a prompt for user input and handles 'quit' and 'reset' commands.
@@ -511,7 +549,7 @@ Available tools:
                 assistant.reset()
                 continue
 
-            response = assistant.chat(user_input)
+            response = await assistant.chat(user_input)
             console.print("\n[bold purple]Claude Engineer:[/bold purple]")
             if isinstance(response, str):
                 safe_response = response.replace('[', '\\[').replace(']', '\\]')
@@ -526,4 +564,4 @@ Available tools:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

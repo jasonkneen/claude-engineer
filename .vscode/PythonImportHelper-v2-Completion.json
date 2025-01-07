@@ -459,6 +459,86 @@
         "documentation": {}
     },
     {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "Union",
         "importPath": "typing",
         "description": "typing",
@@ -539,7 +619,7 @@
         "documentation": {}
     },
     {
-        "label": "List",
+        "label": "Any",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -555,7 +635,7 @@
         "documentation": {}
     },
     {
-        "label": "Any",
+        "label": "List",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -563,7 +643,23 @@
         "documentation": {}
     },
     {
-        "label": "List",
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -579,7 +675,15 @@
         "documentation": {}
     },
     {
-        "label": "Any",
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -712,6 +816,14 @@
     },
     {
         "label": "APIError",
+        "importPath": "anthropic",
+        "description": "anthropic",
+        "isExtraImport": true,
+        "detail": "anthropic",
+        "documentation": {}
+    },
+    {
+        "label": "Anthropic",
         "importPath": "anthropic",
         "description": "anthropic",
         "isExtraImport": true,
@@ -898,14 +1010,6 @@
         "documentation": {}
     },
     {
-        "label": "prompt",
-        "importPath": "prompt_toolkit",
-        "description": "prompt_toolkit",
-        "isExtraImport": true,
-        "detail": "prompt_toolkit",
-        "documentation": {}
-    },
-    {
         "label": "Style",
         "importPath": "prompt_toolkit.styles",
         "description": "prompt_toolkit.styles",
@@ -986,6 +1090,22 @@
         "isExtraImport": true,
         "importPath": "datetime",
         "description": "datetime",
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
         "detail": "datetime",
         "documentation": {}
     },
@@ -1262,6 +1382,30 @@
         "documentation": {}
     },
     {
+        "label": "BaseTool",
+        "importPath": "tools.base",
+        "description": "tools.base",
+        "isExtraImport": true,
+        "detail": "tools.base",
+        "documentation": {}
+    },
+    {
+        "label": "BaseTool",
+        "importPath": "tools.base",
+        "description": "tools.base",
+        "isExtraImport": true,
+        "detail": "tools.base",
+        "documentation": {}
+    },
+    {
+        "label": "BaseTool",
+        "importPath": "tools.base",
+        "description": "tools.base",
+        "isExtraImport": true,
+        "detail": "tools.base",
+        "documentation": {}
+    },
+    {
         "label": "webbrowser",
         "kind": 6,
         "isExtraImport": true,
@@ -1296,6 +1440,55 @@
         "documentation": {}
     },
     {
+        "label": "pygments",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "pygments",
+        "description": "pygments",
+        "detail": "pygments",
+        "documentation": {}
+    },
+    {
+        "label": "highlight",
+        "importPath": "pygments",
+        "description": "pygments",
+        "isExtraImport": true,
+        "detail": "pygments",
+        "documentation": {}
+    },
+    {
+        "label": "get_lexer_by_name",
+        "importPath": "pygments.lexers",
+        "description": "pygments.lexers",
+        "isExtraImport": true,
+        "detail": "pygments.lexers",
+        "documentation": {}
+    },
+    {
+        "label": "guess_lexer",
+        "importPath": "pygments.lexers",
+        "description": "pygments.lexers",
+        "isExtraImport": true,
+        "detail": "pygments.lexers",
+        "documentation": {}
+    },
+    {
+        "label": "HtmlFormatter",
+        "importPath": "pygments.formatters",
+        "description": "pygments.formatters",
+        "isExtraImport": true,
+        "detail": "pygments.formatters",
+        "documentation": {}
+    },
+    {
+        "label": "ClassNotFound",
+        "importPath": "pygments.util",
+        "description": "pygments.util",
+        "isExtraImport": true,
+        "detail": "pygments.util",
+        "documentation": {}
+    },
+    {
         "label": "pathlib",
         "kind": 6,
         "isExtraImport": true,
@@ -1326,6 +1519,46 @@
         "description": "pathlib",
         "isExtraImport": true,
         "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Config",
+        "importPath": "config",
+        "description": "config",
+        "isExtraImport": true,
+        "detail": "config",
+        "documentation": {}
+    },
+    {
+        "label": "Config",
+        "importPath": "config",
+        "description": "config",
+        "isExtraImport": true,
+        "detail": "config",
+        "documentation": {}
+    },
+    {
+        "label": "Config",
+        "importPath": "config",
+        "description": "config",
+        "isExtraImport": true,
+        "detail": "config",
+        "documentation": {}
+    },
+    {
+        "label": "Config",
+        "importPath": "config",
+        "description": "config",
+        "isExtraImport": true,
+        "detail": "config",
         "documentation": {}
     },
     {
@@ -1386,6 +1619,14 @@
         "documentation": {}
     },
     {
+        "label": "jsonify",
+        "importPath": "flask",
+        "description": "flask",
+        "isExtraImport": true,
+        "detail": "flask",
+        "documentation": {}
+    },
+    {
         "label": "render_template",
         "importPath": "flask",
         "description": "flask",
@@ -1402,27 +1643,11 @@
         "documentation": {}
     },
     {
-        "label": "jsonify",
-        "importPath": "flask",
-        "description": "flask",
-        "isExtraImport": true,
-        "detail": "flask",
-        "documentation": {}
-    },
-    {
         "label": "url_for",
         "importPath": "flask",
         "description": "flask",
         "isExtraImport": true,
         "detail": "flask",
-        "documentation": {}
-    },
-    {
-        "label": "Assistant",
-        "importPath": "ce3",
-        "description": "ce3",
-        "isExtraImport": true,
-        "detail": "ce3",
         "documentation": {}
     },
     {
@@ -1434,59 +1659,11 @@
         "documentation": {}
     },
     {
-        "label": "Config",
-        "importPath": "config",
-        "description": "config",
+        "label": "Assistant",
+        "importPath": "ce3",
+        "description": "ce3",
         "isExtraImport": true,
-        "detail": "config",
-        "documentation": {}
-    },
-    {
-        "label": "Config",
-        "importPath": "config",
-        "description": "config",
-        "isExtraImport": true,
-        "detail": "config",
-        "documentation": {}
-    },
-    {
-        "label": "Config",
-        "importPath": "config",
-        "description": "config",
-        "isExtraImport": true,
-        "detail": "config",
-        "documentation": {}
-    },
-    {
-        "label": "Live",
-        "importPath": "rich.live",
-        "description": "rich.live",
-        "isExtraImport": true,
-        "detail": "rich.live",
-        "documentation": {}
-    },
-    {
-        "label": "Live",
-        "importPath": "rich.live",
-        "description": "rich.live",
-        "isExtraImport": true,
-        "detail": "rich.live",
-        "documentation": {}
-    },
-    {
-        "label": "Spinner",
-        "importPath": "rich.spinner",
-        "description": "rich.spinner",
-        "isExtraImport": true,
-        "detail": "rich.spinner",
-        "documentation": {}
-    },
-    {
-        "label": "Spinner",
-        "importPath": "rich.spinner",
-        "description": "rich.spinner",
-        "isExtraImport": true,
-        "detail": "rich.spinner",
+        "detail": "ce3",
         "documentation": {}
     },
     {
@@ -1517,6 +1694,64 @@
         "documentation": {}
     },
     {
+        "label": "platform",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "platform",
+        "description": "platform",
+        "detail": "platform",
+        "documentation": {}
+    },
+    {
+        "label": "psutil",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "psutil",
+        "description": "psutil",
+        "detail": "psutil",
+        "documentation": {}
+    },
+    {
+        "label": "PromptSession",
+        "importPath": "prompt_toolkit.shortcuts",
+        "description": "prompt_toolkit.shortcuts",
+        "isExtraImport": true,
+        "detail": "prompt_toolkit.shortcuts",
+        "documentation": {}
+    },
+    {
+        "label": "Live",
+        "importPath": "rich.live",
+        "description": "rich.live",
+        "isExtraImport": true,
+        "detail": "rich.live",
+        "documentation": {}
+    },
+    {
+        "label": "Live",
+        "importPath": "rich.live",
+        "description": "rich.live",
+        "isExtraImport": true,
+        "detail": "rich.live",
+        "documentation": {}
+    },
+    {
+        "label": "Spinner",
+        "importPath": "rich.spinner",
+        "description": "rich.spinner",
+        "isExtraImport": true,
+        "detail": "rich.spinner",
+        "documentation": {}
+    },
+    {
+        "label": "Spinner",
+        "importPath": "rich.spinner",
+        "description": "rich.spinner",
+        "isExtraImport": true,
+        "detail": "rich.spinner",
+        "documentation": {}
+    },
+    {
         "label": "SystemPrompts",
         "importPath": "prompts.system_prompts",
         "description": "prompts.system_prompts",
@@ -1530,6 +1765,22 @@
         "description": "prompts.system_prompts",
         "isExtraImport": true,
         "detail": "prompts.system_prompts",
+        "documentation": {}
+    },
+    {
+        "label": "ContextManager",
+        "importPath": "tools.contextmanager",
+        "description": "tools.contextmanager",
+        "isExtraImport": true,
+        "detail": "tools.contextmanager",
+        "documentation": {}
+    },
+    {
+        "label": "ContextManager",
+        "importPath": "tools.contextmanager",
+        "description": "tools.contextmanager",
+        "isExtraImport": true,
+        "detail": "tools.contextmanager",
         "documentation": {}
     },
     {
@@ -3441,6 +3692,42 @@
         "documentation": {}
     },
     {
+        "label": "CodeFormatter",
+        "kind": 6,
+        "importPath": "tools.codeformatter",
+        "description": "tools.codeformatter",
+        "peekOfCode": "class CodeFormatter(BaseTool):\n    name = \"codeformatter\"\n    description = '''\n    Formats and syntax-highlights code blocks with support for multiple languages.\n    Handles inline code, block code, and diff formatting.\n    Supports line numbers and syntax highlighting.\n    Auto-detects language if not specified.\n    Returns markdown-compatible formatted code.\n    '''\n    input_schema = {",
+        "detail": "tools.codeformatter",
+        "documentation": {}
+    },
+    {
+        "label": "CommandListFormatter",
+        "kind": 6,
+        "importPath": "tools.commandlistformatter",
+        "description": "tools.commandlistformatter",
+        "peekOfCode": "class CommandListFormatter(BaseTool):\n    name = \"commandlistformatter\"\n    description = '''\n    Formats a list of commands or events into a clean, readable structure.\n    Features:\n    - One command per line with proper indentation\n    - Optional grouping by prefix/category\n    - Strips common prefixes for cleaner display\n    - Supports JSON or plain text input\n    - Multiple output formats (plain text, markdown)",
+        "detail": "tools.commandlistformatter",
+        "documentation": {}
+    },
+    {
+        "label": "ContentAnalyzer",
+        "kind": 6,
+        "importPath": "tools.contentanalyzer",
+        "description": "tools.contentanalyzer",
+        "peekOfCode": "class ContentAnalyzer(BaseTool):\n    name = \"contentanalyzer\"\n    description = '''\n    Analyzes content (text, code, or images) and generates structured summaries.\n    Provides organized analysis with main points, technical details, and action items.\n    Supports multiple output formats and content type detection.\n    Includes metadata and contextual information in analysis results.\n    '''\n    input_schema = {\n        \"type\": \"object\",",
+        "detail": "tools.contentanalyzer",
+        "documentation": {}
+    },
+    {
+        "label": "ContextManager",
+        "kind": 6,
+        "importPath": "tools.contextmanager",
+        "description": "tools.contextmanager",
+        "peekOfCode": "class ContextManager:\n    \"\"\"Manages context data capture, AI summarization, and storage.\"\"\"\n    def __init__(self):\n        self.context_dir = Config.CONTEXT_DIR\n        self.archive_dir = Config.CONTEXT_ARCHIVE_DIR\n        self.client = Anthropic(api_key=Config.ANTHROPIC_API_KEY)\n        self._ensure_directories()\n    def _ensure_directories(self):\n        \"\"\"Ensures required directories exist and are hidden.\"\"\"\n        for directory in [self.context_dir, self.archive_dir]:",
+        "detail": "tools.contextmanager",
+        "documentation": {}
+    },
+    {
         "label": "CreateFoldersTool",
         "kind": 6,
         "importPath": "tools.createfolderstool",
@@ -3562,7 +3849,7 @@
         "kind": 2,
         "importPath": "app",
         "description": "app",
-        "peekOfCode": "def home():\n    return render_template('index.html')\n@app.route('/chat', methods=['POST'])\ndef chat():\n    data = request.json\n    message = data.get('message', '')\n    image_data = data.get('image')  # Get the base64 image data\n    # Prepare the message content\n    if image_data:\n        # Create a message with both text and image in correct order",
+        "peekOfCode": "def home():\n    return render_template('index.html')\n@app.route('/chat', methods=['POST'])\ndef chat():\n    data = request.json\n    message = data.get('message', '')\n    image_data = data.get('image')  # Get the base64 image data\n    # Get media type from request or extract from data URL\n    media_type = data.get('currentMediaType')\n    if not media_type and image_data and ',' in image_data and ':' in image_data.split(',')[0]:",
         "detail": "app",
         "documentation": {}
     },
@@ -3571,7 +3858,7 @@
         "kind": 2,
         "importPath": "app",
         "description": "app",
-        "peekOfCode": "def chat():\n    data = request.json\n    message = data.get('message', '')\n    image_data = data.get('image')  # Get the base64 image data\n    # Prepare the message content\n    if image_data:\n        # Create a message with both text and image in correct order\n        message_content = [\n            {\n                \"type\": \"image\",",
+        "peekOfCode": "def chat():\n    data = request.json\n    message = data.get('message', '')\n    image_data = data.get('image')  # Get the base64 image data\n    # Get media type from request or extract from data URL\n    media_type = data.get('currentMediaType')\n    if not media_type and image_data and ',' in image_data and ':' in image_data.split(',')[0]:\n        media_type = image_data.split(',')[0].split(':')[1].split(';')[0]\n    media_type = media_type or 'image/jpeg'  # Fallback if still not found\n    # Prepare the message content",
         "detail": "app",
         "documentation": {}
     },
@@ -3625,7 +3912,7 @@
         "kind": 5,
         "importPath": "app",
         "description": "app",
-        "peekOfCode": "assistant = Assistant()\n@app.route('/')\ndef home():\n    return render_template('index.html')\n@app.route('/chat', methods=['POST'])\ndef chat():\n    data = request.json\n    message = data.get('message', '')\n    image_data = data.get('image')  # Get the base64 image data\n    # Prepare the message content",
+        "peekOfCode": "assistant = Assistant()\n@app.route('/')\ndef home():\n    return render_template('index.html')\n@app.route('/chat', methods=['POST'])\ndef chat():\n    data = request.json\n    message = data.get('message', '')\n    image_data = data.get('image')  # Get the base64 image data\n    # Get media type from request or extract from data URL",
         "detail": "app",
         "documentation": {}
     },
@@ -3639,11 +3926,11 @@
         "documentation": {}
     },
     {
-        "label": "main",
-        "kind": 2,
+        "label": "SPINNER_CLEANUP_TIMEOUT",
+        "kind": 5,
         "importPath": "ce3",
         "description": "ce3",
-        "peekOfCode": "def main():\n    \"\"\"\n    Entry point for the assistant CLI loop.\n    Provides a prompt for user input and handles 'quit' and 'reset' commands.\n    \"\"\"\n    console = Console()\n    style = Style.from_dict({'prompt': 'orange'})\n    try:\n        assistant = Assistant()\n    except ValueError as e:",
+        "peekOfCode": "SPINNER_CLEANUP_TIMEOUT = getattr(Config, 'SPINNER_CLEANUP_TIMEOUT', 2.0)\nfrom prompts.system_prompts import SystemPrompts\nfrom tools.base import BaseTool\nfrom tools.contextmanager import ContextManager\n# Configure logging to only show ERROR level and above\nlogging.basicConfig(\n    level=logging.ERROR,\n    format='%(levelname)s: %(message)s'\n)\nclass Assistant:",
         "detail": "ce3",
         "documentation": {}
     },
@@ -3657,20 +3944,11 @@
         "documentation": {}
     },
     {
-        "label": "main",
-        "kind": 2,
-        "importPath": "ce3prime",
-        "description": "ce3prime",
-        "peekOfCode": "def main():\n    \"\"\"\n    Entry point for the assistant CLI loop.\n    Provides a prompt for user input and handles 'quit' and 'reset' commands.\n    \"\"\"\n    console = Console()\n    style = Style.from_dict({'prompt': 'orange'})\n    try:\n        assistant = Assistant()\n    except ValueError as e:",
-        "detail": "ce3prime",
-        "documentation": {}
-    },
-    {
         "label": "Config",
         "kind": 6,
         "importPath": "config",
         "description": "config",
-        "peekOfCode": "class Config:\n    ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')\n    MODEL = \"claude-3-5-sonnet-20241022\"\n    MAX_TOKENS = 8000\n    MAX_CONVERSATION_TOKENS = 200000  # Maximum tokens per conversation\n    # Paths\n    BASE_DIR = Path(__file__).parent\n    TOOLS_DIR = BASE_DIR / \"tools\"\n    PROMPTS_DIR = BASE_DIR / \"prompts\"\n    # Assistant Configuration",
+        "peekOfCode": "class Config:\n    ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')\n    MODEL = \"claude-3-5-sonnet-20241022\"\n    MAX_TOKENS = 8000\n    MAX_CONVERSATION_TOKENS = 200000  # Maximum tokens per conversation\n    # Paths\n    BASE_DIR = Path(__file__).parent\n    TOOLS_DIR = BASE_DIR / \"tools\"\n    PROMPTS_DIR = BASE_DIR / \"prompts\"\n    CONTEXT_DIR = BASE_DIR / \".context\"",
         "detail": "config",
         "documentation": {}
     },

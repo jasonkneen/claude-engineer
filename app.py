@@ -1,8 +1,10 @@
-from flask import Flask, render_template, request, jsonify, url_for
-from ce3 import Assistant
-import os
-from werkzeug.utils import secure_filename
 import base64
+import os
+
+from flask import Flask, jsonify, render_template, request, url_for
+from werkzeug.utils import secure_filename
+
+from ce3 import Assistant
 from config import Config
 
 app = Flask(__name__, static_folder='static')
@@ -24,22 +26,32 @@ def chat():
     data = request.json
     message = data.get('message', '')
     image_data = data.get('image')  # Get the base64 image data
+    # Get media type from request or extract from data URL
+    media_type = data.get('currentMediaType')
+    if not media_type and image_data and ',' in image_data and ':' in image_data.split(',')[0]:
+        media_type = image_data.split(',')[0].split(':')[1].split(';')[0]
+    media_type = media_type or 'image/jpeg'  # Fallback if still not found
     
     # Prepare the message content
     if image_data:
-        # Create a message with both text and image in correct order
-        message_content = [
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/jpeg",  # We should detect this from the image
-                    "data": image_data.split(',')[1] if ',' in image_data else image_data  # Remove data URL prefix if present
-                }
-            }
-        ]
+        # Extract base64 data and media type from data URL
+        if ',' in image_data:
+            _, image_data = image_data.split(',', 1)
         
-        # Only add text message if there is actual text
+        # Create a message with both text and image in correct order
+        message_content = []
+        
+        # Add image first
+        message_content.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": media_type,
+                "data": image_data
+            }
+        })
+        
+        # Add text if present
         if message.strip():
             message_content.append({
                 "type": "text",
@@ -47,7 +59,7 @@ def chat():
             })
     else:
         # Text-only message
-        message_content = message
+        message_content = [{"type": "text", "text": message}] if message.strip() else []
     
     try:
         # Handle the chat message with the appropriate content
@@ -127,4 +139,4 @@ def reset():
     return jsonify({'status': 'success'})
 
 if __name__ == '__main__':
-    app.run(debug=False) 
+    app.run(debug=False)
