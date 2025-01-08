@@ -1,11 +1,1 @@
-*.pyc
-.DS_Store
-.codegpt
-.context/
-.context_archive/
-.env
-.pytest_cache/
-.ruff_cache/
-.venv/
-__pycache__/
-uploads/
+logs/
