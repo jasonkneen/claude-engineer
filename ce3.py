@@ -466,10 +466,10 @@ class Assistant:
                         "content": response.content  # Keep original content with tool_use blocks
                     })
                     
-                    # Then append tool results as assistant message
+                    # Then append tool results as user message (API requirement)
                     if tool_results:  # Only append if we have results
                         self.conversation_history.append({
-                            "role": "assistant",
+                            "role": "user",
                             "content": tool_results  # Use already serialized tool_results
                         })
                     

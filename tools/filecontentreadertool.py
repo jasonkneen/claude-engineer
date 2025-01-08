@@ -171,10 +171,14 @@ class FileContentReaderTool(BaseTool):
                     content = self._read_file(path)
                     results[path] = content
 
-            formatted = "\n\n".join(
-                f"File: {p}\n{format_content(p, c)['text']}" 
-                for p, c in results.items()
-            )
+            # Format each file's content with proper code blocks
+            formatted_files = []
+            for path, content in results.items():
+                formatted_content = format_content(path, content)
+                formatted_files.append(f"File: {path}\n{formatted_content['text']}")
+            
+            # Join all formatted files with proper spacing
+            formatted = "\n\n".join(formatted_files)
             return {"type": "text", "text": formatted}
 
         except Exception as e:
