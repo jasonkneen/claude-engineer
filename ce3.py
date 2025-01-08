@@ -13,7 +13,6 @@ from typing import Any, Dict, List, Optional, Union
 import anthropic
 import psutil
 from prompt_toolkit.shortcuts import PromptSession
-from prompt_toolkit.styles import Style
 
 from config import Config
 
@@ -564,15 +563,20 @@ class Assistant:
     async def _show_thinking_spinner(self):
         """
         Async context manager for showing thinking spinner.
+        Uses simple text-based spinner.
         """
-        spinner = Spinner('dots', text='Thinking...', style="cyan")
-        with Live(spinner, refresh_per_second=10, transient=True) as live:
-            try:
-                while True:
-                    await asyncio.sleep(0.1)
-                    live.refresh()
-            except asyncio.CancelledError:
-                pass
+        spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+        i = 0
+        try:
+            while True:
+                sys.stdout.write('\r\033[34mThinking... ' + spinner_chars[i] + '\033[0m')
+                sys.stdout.flush()
+                i = (i + 1) % len(spinner_chars)
+                await asyncio.sleep(0.1)
+        except asyncio.CancelledError:
+            sys.stdout.write('\r' + ' ' * 20 + '\r')  # Clear the spinner
+            sys.stdout.flush()
+            pass
 
 
     def _serialize_chat_content(self, content: Any) -> Dict[str, Any]:
@@ -580,56 +584,60 @@ class Assistant:
         Serialize content consistently, handling TextBlocks and other types.
         Always returns a Dict[str, Any] with 'type' and 'text' keys.
         """
-        # Handle None or empty content
-        if content is None:
-            return {"type": "text", "text": ""}
-            
-        # If already properly formatted, return as is
-        if isinstance(content, dict) and 'type' in content and 'text' in content:
-            return content
-            
-        # Handle dictionaries first to prevent attribute access errors
-        if isinstance(content, dict):
-            if 'type' in content and 'text' in content:
-                return content
-            try:
-                return {"type": "text", "text": json.dumps(content, indent=2)}
-            except (TypeError, json.JSONDecodeError):
-                return {"type": "text", "text": str(content)}
-
-        # Handle any object that might have a text representation
         try:
-            # Try to get plain text representation
+            # Handle None or empty content
+            if content is None:
+                return {"type": "text", "text": ""}
+
+            # Early handling of Rich TextBlock objects
+            if str(type(content).__name__) == 'TextBlock':
+                try:
+                    return {"type": "text", "text": str(content.text)}
+                except:
+                    return {"type": "text", "text": str(content)}
+
+            # If already properly formatted, return as is
+            if isinstance(content, dict) and 'type' in content and 'text' in content:
+                # Ensure text value is a string
+                content['text'] = str(content['text'])
+                return content
+
+            # Handle lists by recursively serializing items first
+            if isinstance(content, (list, tuple)):
+                serialized_items = [self._serialize_chat_content(item) for item in content]
+                # If all items are dicts with type/text, join their text values
+                if all(isinstance(item, dict) and 'type' in item and 'text' in item for item in serialized_items):
+                    return {"type": "text", "text": "\n".join(item['text'] for item in serialized_items)}
+                # Otherwise return as JSON string
+                return {"type": "text", "text": json.dumps([
+                    item['text'] if isinstance(item, dict) and 'text' in item else str(item)
+                    for item in serialized_items
+                ], indent=2)}
+
+            # Handle dictionaries
+            if isinstance(content, dict):
+                if 'type' in content and 'text' in content:
+                    content['text'] = str(content['text'])
+                    return content
+                try:
+                    return {"type": "text", "text": json.dumps(content, indent=2)}
+                except:
+                    return {"type": "text", "text": str(content)}
+
+            # Handle objects with text or plain attributes
             if hasattr(content, 'plain'):
-                return {"type": "text", "text": content.plain}
+                return {"type": "text", "text": str(content.plain)}
             if hasattr(content, 'text'):
-                return {"type": "text", "text": content.text}
-            
-            # Convert to string representation
+                return {"type": "text", "text": str(content.text)}
+
+            # Final fallback: convert to string
             return {"type": "text", "text": str(content)}
+
         except Exception as e:
-            # Log the error for debugging
-            print(f"Error serializing content: {str(e)}")
-            # Final fallback
-            return {"type": "text", "text": str(content)}
-            
-        # Handle lists by recursively serializing items
-        if isinstance(content, (list, tuple)):
-            serialized_items = [self._serialize_chat_content(item) for item in content]
-            # If all items are dicts with type/text, return them as a list
-            if all(isinstance(item, dict) and 'type' in item and 'text' in item for item in serialized_items):
-                return {"type": "text", "text": "\n".join(item['text'] for item in serialized_items)}
-            return {"type": "text", "text": json.dumps(serialized_items, indent=2)}
-            
-        # Handle dictionaries
-        if isinstance(content, dict):
-            try:
-                return {"type": "text", "text": json.dumps(content, indent=2)}
-            except (TypeError, json.JSONDecodeError):
-                return {"type": "text", "text": str(content)}
-                
-        # Handle everything else
-        return {"type": "text", "text": str(content)}
+            logging.error(f"Error in _serialize_chat_content: {str(e)}")
+            # Ultimate fallback
+            return {"type": "text", "text": f"Error serializing content: {str(e)}"}
+
 
     async def chat(self, user_input: Union[str, List[Any]]) -> str:
         """
@@ -697,10 +705,17 @@ class Assistant:
             except Exception as e:
                 logging.error("Failed to serialize input: %s", str(e))
 
+            # Handle potential TextBlock objects in serialized input
+            cleaned_input = []
+            for item in serialized_input:
+                if isinstance(item, dict) and 'text' in item:
+                    item['text'] = str(item['text'])  # Ensure text is string
+                cleaned_input.append(item)
+
             # Add serialized user message to conversation history
             self.conversation_history.append({
                 "role": "user",
-                "content": serialized_input
+                "content": cleaned_input
             })
 
             # Debug: verify conversation history
@@ -737,21 +752,35 @@ class Assistant:
             else:
                 response = await self._get_completion()
 
-            # Ensure response is properly serialized
-            if isinstance(response, str):
-                serialized_response = self._serialize_chat_content(response)
-            else:
-                serialized_response = response  # Already serialized by _get_completion
-                
-            # Log assistant response
-            self._log_message("assistant", serialized_response)
+            # Handle response serialization
+            try:
+                # Early TextBlock handling
+                if hasattr(response, '__class__') and response.__class__.__name__ == 'TextBlock':
+                    response = str(getattr(response, 'text', response))
 
-            # Ensure response is properly serialized for conversation history
-            if isinstance(serialized_response, dict) and 'type' in serialized_response and 'text' in serialized_response:
+                # Now handle the possibly converted response
+                if isinstance(response, dict) and 'type' in response and 'text' in response:
+                    # Response is already properly serialized (from tool execution)
+                    serialized_response = {
+                        "type": "text",
+                        "text": str(response.get('text', ''))  # Ensure text is string, use get() for safety
+                    }
+                elif isinstance(response, str):
+                    # Convert string response to proper format
+                    serialized_response = {"type": "text", "text": response}
+                else:
+                    # Handle any other type of response
+                    serialized_response = {"type": "text", "text": str(response)}
+                
+                # Log assistant response
+                self._log_message("assistant", serialized_response)
+
+                # Use serialized response directly for conversation history
                 history_content = [serialized_response]
-            else:
-                # If somehow not properly serialized, create a proper format
-                history_content = [{"type": "text", "text": str(serialized_response)}]
+            except Exception as e:
+                logging.error(f"Error serializing response: {str(e)}")
+                serialized_response = {"type": "text", "text": f"Error: {str(e)}"}
+                history_content = [serialized_response]
             
             # Add to conversation history
             self.conversation_history.append({
@@ -822,7 +851,7 @@ class Assistant:
             raise  # Re-raise to ensure caller knows about the failure
 
         welcome_text = """
-# Claude Engineer v3. A self-improving assistant framework with tool creation
+Claude Engineer v3. A self-improving assistant framework with tool creation
 
 Type 'refresh' to reload available tools
 Type 'reset' to clear conversation history
@@ -830,7 +859,7 @@ Type 'quit' to exit
 
 Available tools:
 """
-        self.console.print(Markdown(welcome_text))
+        print(welcome_text)
         self.display_available_tools()
 
 
@@ -839,19 +868,17 @@ async def main():
     Entry point for the assistant CLI loop.
     Provides a prompt for user input and handles 'quit' and 'reset' commands.
     """
-    console = Console()
-    style = Style.from_dict({'prompt': 'orange'})
-    session = PromptSession(style=style)
+    session = PromptSession()
 
     try:
         assistant = Assistant()
     except ValueError as e:
-        console.print(f"[bold red]Error:[/bold red] {str(e)}")
-        console.print("Please ensure ANTHROPIC_API_KEY is set correctly.")
+        print(f"\nError: {str(e)}")
+        print("Please ensure ANTHROPIC_API_KEY is set correctly.")
         return
 
     welcome_text = """
-# Claude Engineer v3. A self-improving assistant framework with tool creation
+Claude Engineer v3. A self-improving assistant framework with tool creation
 
 Type 'refresh' to reload available tools
 Type 'reset' to clear conversation history
@@ -859,7 +886,7 @@ Type 'quit' to exit
 
 Available tools:
 """
-    console.print(Markdown(welcome_text))
+    print(welcome_text)
     assistant.display_available_tools()
 
     async def chat_loop():
@@ -870,7 +897,7 @@ Available tools:
                 user_input = user_input.strip()
 
                 if user_input.lower() == 'quit':
-                    console.print("\n[bold blue]\U0001F44B Goodbye![/bold blue]")
+                    print("\n👋 Goodbye!")
                     break
                 elif user_input.lower() == 'reset':
                     await asyncio.shield(assistant.reset())
@@ -880,27 +907,23 @@ Available tools:
                     # Shield the chat operation to prevent cancellation during processing
                     response = await asyncio.shield(assistant.chat(user_input))
                 except anthropic.APIConnectionError as conn_error:
-                    console.print(f"\n[bold red]Connection Error:[/bold red] {str(conn_error)}")
+                    print(f"\nConnection Error: {str(conn_error)}")
                     continue
                 except anthropic.RateLimitError as rate_error:
-                    console.print(f"\n[bold red]Rate Limit Error:[/bold red] {str(rate_error)}")
+                    print(f"\nRate Limit Error: {str(rate_error)}")
                     continue
                 except anthropic.APIError as api_error:
-                    console.print(f"\n[bold red]API Error:[/bold red] {str(api_error)}")
+                    print(f"\nAPI Error: {str(api_error)}")
                     continue
                 except asyncio.TimeoutError:
-                    console.print("\n[bold red]Request timed out[/bold red]")
+                    print("\nRequest timed out")
                     continue
                 except Exception as chat_error:
                     logging.error("Chat error:", exc_info=True)
-                    console.print(f"\n[bold red]Unexpected Error:[/bold red] {str(chat_error)}")
+                    print(f"\nUnexpected Error: {str(chat_error)}")
                     continue
-                console.print("\n[bold purple]Claude Engineer:[/bold purple]")
-                if isinstance(response, str):
-                    safe_response = response.replace('[', '\[').replace(']', '\]')
-                    console.print(safe_response)
-                else:
-                    console.print(str(response))
+                print("\nClaude Engineer:")
+                print(response if isinstance(response, str) else str(response))
 
             except KeyboardInterrupt:
                 continue
@@ -908,7 +931,7 @@ Available tools:
                 break
             except Exception as e:
                 logging.error("Fatal error in chat loop:", exc_info=True)
-                console.print(f"\n[bold red]Fatal Error:[/bold red] {str(e)}")
+                print(f"\nFatal Error: {str(e)}")
                 break
 
     # Run the chat loop
