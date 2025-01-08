@@ -615,18 +615,33 @@ class Assistant:
             except (TypeError, json.JSONDecodeError):
                 return {"type": "text", "text": str(content)}
 
-        # Handle rich text objects and objects with text attribute
-        if hasattr(content, '__rich__') or hasattr(content, 'text'):
+        # Import Rich components we need to check
+        from rich.console import Console
+        from rich.syntax import Syntax
+        from rich.text import Text, TextType
+        from rich.panel import Panel
+
+        # Handle Rich library objects first
+        if isinstance(content, (Syntax, Text, Panel, TextType)) or hasattr(content, '__rich__'):
             try:
-                # Try text attribute first for TextBlock objects
-                if hasattr(content, 'text'):
-                    text = str(content.text).strip()
-                    if text:
-                        return {"type": "text", "text": text}
-                
-                # Try rich console for other rich objects
-                from rich.console import Console
+                # Create console for rendering
                 console = Console(record=True)
+                
+                # Handle specific Rich types
+                if isinstance(content, Syntax):
+                    console.print(content)
+                    rendered = console.export_text().strip()
+                    return {"type": "text", "text": rendered}
+                    
+                if isinstance(content, (Text, TextType)):
+                    return {"type": "text", "text": str(content)}
+                    
+                if isinstance(content, Panel):
+                    console.print(content)
+                    rendered = console.export_text().strip()
+                    return {"type": "text", "text": rendered}
+                
+                # For other Rich objects, use console export
                 console.print(content)
                 rendered = console.export_text().strip()
                 if rendered:
@@ -634,7 +649,9 @@ class Assistant:
                 
                 # Final fallback to string representation
                 return {"type": "text", "text": str(content)}
-            except Exception:
+            except Exception as e:
+                # Log the error for debugging
+                print(f"Error serializing Rich content: {str(e)}")
                 # Final fallback
                 return {"type": "text", "text": str(content)}
             
