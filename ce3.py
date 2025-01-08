@@ -496,40 +496,13 @@ class Assistant:
                                 }]
                             })
 
-                    # First append the assistant's tool use request
+                    # Handle tool use and results
                     try:
-                        # Serialize the response content
-                        serialized_content = []
-                        for item in response.content:
-                            if hasattr(item, 'text'):
-                                serialized_item = self._serialize_chat_content(item)
-                                serialized_content.append(serialized_item)
-                            elif isinstance(item, dict):
-                                if item.get('type') == 'tool_use':
-                                    # Keep tool_use blocks as is
-                                    serialized_content.append(item)
-                                else:
-                                    # Handle other dict content
-                                    serialized_item = self._serialize_chat_content(item)
-                                    serialized_content.append(serialized_item)
-                            else:
-                                # Handle any other content
-                                serialized_item = self._serialize_chat_content(item)
-                                serialized_content.append(serialized_item)
-                        
-                        # Verify serialization
-                        json.dumps(serialized_content)
-                        
-                        # Add assistant message with tool use request
-                        self.conversation_history.append({
-                            "role": "assistant",
-                            "content": serialized_content
-                        })
-                        
-                        # Then execute tools and collect results
+                        # Process tool use requests and collect results
                         tool_results = []
                         for content_block in response.content:
                             if isinstance(content_block, dict) and content_block.get('type') == 'tool_use':
+                                # Execute tool and get result
                                 result = self._execute_tool(content_block)
                                 try:
                                     # Serialize the result
@@ -554,6 +527,13 @@ class Assistant:
                                 "role": "user",
                                 "content": tool_results
                             })
+                            
+                        # Let Claude process the tool results in the next turn
+                        # Add assistant message with tool use request
+                        self.conversation_history.append({
+                            "role": "assistant",
+                            "content": [{"type": "text", "text": "Processing tool results..."}]
+                        })
                             
                     except Exception as e:
                         logging.error(f"Failed to handle tool use and results: {str(e)}")
