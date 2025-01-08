@@ -219,25 +219,19 @@ class FileContentReaderTool(BaseTool):
             # Create console for rendering
             display_console = Console(record=True)
             
-            # Create and render group
-            content = Group(
+            # Create formatted output string
+            formatted_output = [
                 input_section,
                 "[cyan]📤 Result:[/cyan]",
                 rendered_code
-            )
+            ]
             
-            # Create panel with proper styling
-            panel = Panel(
-                content,
-                title="Tool used: FileContentReader",
-                title_align="left",
-                border_style="cyan",
-                padding=(0, 1)
+            # Join with proper spacing and add title
+            final_output = (
+                "╭── Tool used: FileContentReader ──╮\n"
+                + "\n".join(formatted_output) + 
+                "\n╰" + "─" * 30 + "╯"
             )
-            
-            # Render the panel to text
-            display_console.print(panel)
-            final_output = display_console.export_text().strip()
             
             return {"type": "text", "text": final_output}
 
