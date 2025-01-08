@@ -611,63 +611,21 @@ class Assistant:
             except (TypeError, json.JSONDecodeError):
                 return {"type": "text", "text": str(content)}
 
-        # Import Rich components we need to check
-        from rich.console import Console, Group, RenderableType
-        from rich.syntax import Syntax
-        from rich.text import Text, TextType
-        from rich.panel import Panel
-
-        # Handle Rich library objects first
-        if isinstance(content, (Syntax, Text, Panel, TextType, Group)) or hasattr(content, '__rich__'):
-            try:
-                # Create console for rendering with consistent settings
-                console = Console(record=True, force_terminal=True, color_system="standard")
-                
-                # Handle TextType objects first (most specific)
-                if isinstance(content, TextType):
-                    return {"type": "text", "text": str(content)}
-                
-                # Handle Text objects next
-                if isinstance(content, Text):
-                    if hasattr(content, 'plain'):
-                        return {"type": "text", "text": content.plain}
-                    return {"type": "text", "text": str(content)}
-                
-                # Handle Syntax objects with proper styling
-                if isinstance(content, Syntax):
-                    console.print(content)
-                    rendered = console.export_text(styles=True).strip()
-                    return {"type": "text", "text": rendered}
-                
-                # Handle Panel and Group objects consistently
-                if isinstance(content, (Panel, Group)):
-                    # Ensure nested content is properly rendered
-                    console.print(content)
-                    rendered = console.export_text(styles=True).strip()
-                    return {"type": "text", "text": rendered}
-                
-                # For objects with __rich__ method
-                if hasattr(content, '__rich__'):
-                    rich_content = content.__rich__()
-                    if isinstance(rich_content, (Text, TextType)):
-                        return {"type": "text", "text": str(rich_content)}
-                    console.print(rich_content)
-                    rendered = console.export_text(styles=True).strip()
-                    return {"type": "text", "text": rendered}
-                
-                # For any other Rich objects, use console export with styles
-                console.print(content)
-                rendered = console.export_text(styles=True).strip()
-                if rendered:
-                    return {"type": "text", "text": rendered}
-                
-                # Final fallback to string representation
-                return {"type": "text", "text": str(content)}
-            except Exception as e:
-                # Log the error for debugging
-                print(f"Error serializing Rich content: {str(e)}")
-                # Final fallback
-                return {"type": "text", "text": str(content)}
+        # Handle any object that might have a text representation
+        try:
+            # Try to get plain text representation
+            if hasattr(content, 'plain'):
+                return {"type": "text", "text": content.plain}
+            if hasattr(content, 'text'):
+                return {"type": "text", "text": content.text}
+            
+            # Convert to string representation
+            return {"type": "text", "text": str(content)}
+        except Exception as e:
+            # Log the error for debugging
+            print(f"Error serializing content: {str(e)}")
+            # Final fallback
+            return {"type": "text", "text": str(content)}
             
         # Handle lists by recursively serializing items
         if isinstance(content, (list, tuple)):
