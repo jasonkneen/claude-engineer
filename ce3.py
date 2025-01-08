@@ -436,8 +436,11 @@ class Assistant:
                             def serialize_content(content):
                                 """Recursively serialize content, handling TextBlocks consistently"""
                                 if hasattr(content, 'text'):  # TextBlock
-                                    return {"type": "text", "text": str(content.text)}
+                                    return {"type": "text", "text": str(content.text) if content.text else ""}
                                 elif isinstance(content, dict):
+                                    # Keep existing type if present, otherwise serialize recursively
+                                    if 'type' in content and 'text' in content:
+                                        return content
                                     return {k: serialize_content(v) for k, v in content.items()}
                                 elif isinstance(content, list):
                                     return [serialize_content(item) for item in content]
@@ -445,8 +448,11 @@ class Assistant:
                                     return {"type": "text", "text": content}
                                 else:
                                     try:
-                                        # Try JSON serialization
+                                        # Try JSON serialization first
                                         json.dumps(content)
+                                        # If it's JSON serializable but not a dict/list/str, wrap it
+                                        if not isinstance(content, (dict, list, str)):
+                                            return {"type": "text", "text": str(content)}
                                         return content
                                     except (TypeError, json.JSONDecodeError):
                                         return {"type": "text", "text": str(content)}
@@ -607,6 +613,23 @@ class Assistant:
                 pass
 
 
+    def _serialize_chat_content(self, content: Any) -> Dict:
+        """
+        Serialize content consistently, handling TextBlocks and other types.
+        This matches the serialization logic in serialize_content() for consistency.
+        """
+        if hasattr(content, 'text'):  # TextBlock or similar
+            return {"type": "text", "text": str(content.text) if content.text else ""}
+        elif isinstance(content, dict):
+            # Keep existing type if present, otherwise treat as text
+            if 'type' in content and 'text' in content:
+                return content
+            return {"type": "text", "text": json.dumps(content)}
+        elif hasattr(content, '__dict__'):  # Custom objects
+            return {"type": "text", "text": str(content.__dict__)}
+        else:
+            return {"type": "text", "text": str(content)}
+
     async def chat(self, user_input: Union[str, List[Any]]) -> str:
         """
         Process a chat message from the user.
@@ -651,24 +674,10 @@ class Assistant:
                 serialized_input = []
                 for item in user_input:
                     try:
-                        if hasattr(item, 'text'):  # Handle TextBlock objects
-                            text = str(item.text) if item.text else ""
-                            if text.strip():  # Only add non-empty text
-                                serialized_input.append({"type": "text", "text": text})
-                        elif hasattr(item, '__dict__'):  # Handle custom objects
-                            # Convert object attributes to dict and ensure JSON serializable
-                            obj_dict = {k: str(v) for k, v in item.__dict__.items()}
-                            serialized_input.append({"type": "text", "text": str(obj_dict)})
-                        elif isinstance(item, dict):
-                            # Ensure the dict is JSON serializable by converting all values to strings
-                            serialized_dict = {k: str(v) for k, v in item.items()}
-                            serialized_input.append(serialized_dict)
-                        else:
-                            # Convert any other type to string representation
-                            text = str(item)
-                            if text.strip():  # Only add non-empty text
-                                serialized_input.append({"type": "text", "text": text})
-                    except (TypeError, json.JSONDecodeError, AttributeError) as e:
+                        serialized_item = self._serialize_chat_content(item)
+                        if serialized_item['text'].strip():  # Only add non-empty text
+                            serialized_input.append(serialized_item)
+                    except Exception as e:
                         logging.warning(f"Failed to serialize input item: {str(e)}")
                         # Convert problematic item to string representation
                         text = str(item)
@@ -678,13 +687,27 @@ class Assistant:
                 if not serialized_input:
                     return "Message cannot contain only empty or whitespace content"
             else:
-                serialized_input = [{"type": "text", "text": str(user_input)}]
+                serialized_input = [self._serialize_chat_content(user_input)]
+
+            # Debug: verify serialization
+            try:
+                json.dumps(serialized_input)
+                logging.debug("Successfully serialized input: %s", json.dumps(serialized_input))
+            except Exception as e:
+                logging.error("Failed to serialize input: %s", str(e))
 
             # Add serialized user message to conversation history
             self.conversation_history.append({
                 "role": "user",
                 "content": serialized_input
             })
+
+            # Debug: verify conversation history
+            try:
+                json.dumps(self.conversation_history)
+                logging.debug("Successfully serialized conversation history")
+            except Exception as e:
+                logging.error("Failed to serialize conversation history: %s", str(e))
 
             # Log user message
             self._log_message("user", serialized_input)
