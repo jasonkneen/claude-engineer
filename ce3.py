@@ -258,18 +258,14 @@ class Assistant:
         # Clean up and serialize result data, preserving formatting
         cleaned_result = self._clean_data_for_display(result)
         
-        # Format tool info with cyan emojis and proper indentation
-        tool_info = f"""[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input.get('text', cleaned_input), indent=2)}
-[cyan]📤 Result:[/cyan] {cleaned_result.get('text', cleaned_result)}"""
-
-        panel = Panel(
-            tool_info,
-            title=f"Tool used: {tool_name}",
-            title_align="left",
-            border_style="cyan",
-            padding=(0, 1)  # Reduced vertical padding
+        # Format tool info with plain text formatting
+        tool_output = (
+            f"╭── Tool used: {tool_name} ──╮\n"
+            f"📥 Input: {json.dumps(cleaned_input.get('text', cleaned_input), indent=2)}\n"
+            f"📤 Result: {cleaned_result.get('text', cleaned_result)}\n"
+            f"╰{'─' * 30}╯"
         )
-        self.console.print(panel)
+        self.console.print(tool_output)
 
     def _clean_data_for_display(self, data):
         """Clean data for display.
