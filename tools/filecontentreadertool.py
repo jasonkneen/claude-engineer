@@ -1,4 +1,5 @@
 from tools.base import BaseTool
+from typing import Dict, Any, Union
 import os
 import json
 import mimetypes
@@ -116,22 +117,65 @@ class FileContentReaderTool(BaseTool):
 
         return results
 
-    def execute(self, **kwargs) -> str:
+    def execute(self, **kwargs) -> Dict[str, Any]:
+        """Read file contents and return them as properly formatted code blocks."""
         file_paths = kwargs.get('file_paths', [])
-        results = {}
+        
+        def detect_language(path: str) -> str:
+            """Detect language based on file extension."""
+            ext = os.path.splitext(path)[1].lstrip('.')
+            return {
+                'py': 'python',
+                'js': 'javascript',
+                'ts': 'typescript',
+                'json': 'json',
+                'md': 'markdown',
+                'html': 'html',
+                'css': 'css',
+                'sh': 'bash',
+            }.get(ext, 'text')
+
+        def format_content(path: str, content: str) -> Dict[str, Any]:
+            """Format content as a code block with detected language."""
+            lang = detect_language(path)
+            return {
+                "type": "text",
+                "text": f"```{lang}\n{content}\n```"
+            }
 
         try:
+            if not file_paths:
+                return {"type": "text", "text": "Error: No file paths provided"}
+
+            # For single file, return formatted content directly
+            if len(file_paths) == 1:
+                path = file_paths[0]
+                if os.path.isdir(path):
+                    dir_results = self._read_directory(path)
+                    formatted = "\n\n".join(
+                        f"File: {p}\n{format_content(p, c)['text']}" 
+                        for p, c in dir_results.items()
+                    )
+                    return {"type": "text", "text": formatted}
+                else:
+                    content = self._read_file(path)
+                    return format_content(path, content)
+
+            # For multiple files, return formatted content for each
+            results = {}
             for path in file_paths:
                 if os.path.isdir(path):
-                    # If it's a directory, read it recursively
                     dir_results = self._read_directory(path)
                     results.update(dir_results)
                 else:
-                    # If it's a file, read it directly
                     content = self._read_file(path)
                     results[path] = content
 
-            return json.dumps(results, indent=2)
+            formatted = "\n\n".join(
+                f"File: {p}\n{format_content(p, c)['text']}" 
+                for p, c in results.items()
+            )
+            return {"type": "text", "text": formatted}
 
         except Exception as e:
-            return json.dumps({"error": str(e)}, indent=2)
+            return {"type": "text", "text": f"Error: {str(e)}"}

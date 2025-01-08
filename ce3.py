@@ -14,11 +14,13 @@ import anthropic
 import psutil
 from prompt_toolkit.shortcuts import PromptSession
 from prompt_toolkit.styles import Style
-from rich.console import Console
+from rich.console import Console, Group
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.spinner import Spinner
+from rich.syntax import Syntax
+from rich.text import Text
 
 from config import Config
 
@@ -68,7 +70,7 @@ class Assistant:
         os.makedirs(self.logs_dir, exist_ok=True)
 
     def _log_message(self, role: str, content: Any):
-        """Log message to a file with timestamp"""
+        """Log message to a file with timestamp, without duplicating tool output display"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_file = os.path.join(self.logs_dir, f"conversation_{datetime.now().strftime('%Y%m%d')}.log")
         
@@ -83,14 +85,19 @@ class Assistant:
                             if item.get('type') == 'text':
                                 formatted_content += item.get('text', '') + '\n'
                             elif item.get('type') == 'tool_use':
+                                # Just log that a tool was used without repeating output
                                 formatted_content += f"[Tool Use: {item.get('name')}]\n"
+                            elif item.get('type') == 'tool_result':
+                                # Skip tool results as they're already displayed
+                                continue
                         else:
                             formatted_content += str(item) + '\n'
                 else:
                     formatted_content = str(content)
                 
-                # Write the formatted log entry
-                f.write(f"[{timestamp}] {role}: {formatted_content.strip()}\n\n")
+                # Write the formatted log entry, skip if it's just tool output
+                if formatted_content.strip():
+                    f.write(f"[{timestamp}] {role}: {formatted_content.strip()}\n\n")
         except Exception as e:
             logging.error(f"Error writing to log file: {str(e)}")
 
@@ -245,15 +252,38 @@ class Assistant:
         # Clean up result data
         cleaned_result = self._clean_data_for_display(result)
 
-        tool_info = f"""[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input, indent=2)}
-[cyan]📤 Result:[/cyan] {cleaned_result}"""
+        # Format and highlight input as JSON
+        formatted_input = json.dumps(cleaned_input, indent=1)
+        input_syntax = Syntax(formatted_input, "json", theme="monokai", line_numbers=False)
+        
+        # Format and highlight result based on content type
+        result_str = str(cleaned_result)
+        if result_str.startswith('```python'):
+            # Already formatted as code block, extract content
+            code = result_str.replace('```python\n', '').replace('\n```', '')
+            result_syntax = Syntax(code, "python", theme="monokai", line_numbers=False)
+        else:
+            # Treat as plain text or auto-detect language
+            result_syntax = Syntax(result_str, "text", theme="monokai", line_numbers=False)
+        
+        # Create headers with emojis
+        input_header = Text("📥 Input:", style="cyan")
+        result_header = Text("📤 Result:", style="cyan")
+        
+        # Combine components using Group
+        tool_info = Group(
+            input_header,
+            input_syntax,
+            result_header,
+            result_syntax
+        )
         
         panel = Panel(
             tool_info,
             title=f"Tool used: {tool_name}",
             title_align="left",
             border_style="cyan",
-            padding=(1, 2)
+            padding=(0, 1)  # Reduced vertical padding
         )
         self.console.print(panel)
 
@@ -330,8 +360,8 @@ class Assistant:
             tool_result = f"Error executing tool: {str(e)}"
 
         # Display tool usage with proper handling of structured data
-        self._display_tool_usage(tool_name, tool_input, 
-            json.dumps(tool_result) if not isinstance(tool_result, str) else tool_result)
+        self._display_tool_usage(tool_name, tool_input, tool_result)
+        # Return the result without duplicating the display
         return tool_result
 
     def _find_tool_instance_in_module(self, module, tool_name: str):
@@ -411,32 +441,13 @@ class Assistant:
                     # Execute each tool in the response content
                     for content_block in response.content:
                         if content_block.type == "tool_use":
+                            # Execute tool and get result (display is handled within _execute_tool)
                             result = self._execute_tool(content_block)
                             
                             # Convert result to serializable format
                             def serialize_content(content):
                                 """Recursively serialize content, handling TextBlocks consistently"""
-                                if hasattr(content, 'text'):  # TextBlock
-                                    return {"type": "text", "text": str(content.text) if content.text else ""}
-                                elif isinstance(content, dict):
-                                    # Keep existing type if present, otherwise serialize recursively
-                                    if 'type' in content and 'text' in content:
-                                        return content
-                                    return {k: serialize_content(v) for k, v in content.items()}
-                                elif isinstance(content, list):
-                                    return [serialize_content(item) for item in content]
-                                elif isinstance(content, str):
-                                    return {"type": "text", "text": content}
-                                else:
-                                    try:
-                                        # Try JSON serialization first
-                                        json.dumps(content)
-                                        # If it's JSON serializable but not a dict/list/str, wrap it
-                                        if not isinstance(content, (dict, list, str)):
-                                            return {"type": "text", "text": str(content)}
-                                        return content
-                                    except (TypeError, json.JSONDecodeError):
-                                        return {"type": "text", "text": str(content)}
+                                return self._serialize_chat_content(content)
 
                             serialized_result = serialize_content(result)
 
@@ -444,21 +455,8 @@ class Assistant:
                             tool_result = {
                                 "type": "tool_result",
                                 "tool_use_id": content_block.id,
+                                "content": [self._serialize_chat_content(serialized_result)]
                             }
-
-                            # Always wrap content in a list of objects
-                            if isinstance(serialized_result, list):
-                                # If it's already a list, ensure each item has type
-                                tool_result["content"] = [
-                                    {"type": "text", "text": str(item)} if not isinstance(item, dict) else item
-                                    for item in serialized_result
-                                ]
-                            elif isinstance(serialized_result, dict):
-                                # Single dict becomes a list with one item
-                                tool_result["content"] = [serialized_result]
-                            else:
-                                # Any other type becomes a text object in a list
-                                tool_result["content"] = [{"type": "text", "text": str(serialized_result)}]
 
                             tool_results.append(tool_result)
 
@@ -594,22 +592,41 @@ class Assistant:
                 pass
 
 
-    def _serialize_chat_content(self, content: Any) -> Dict:
+    def _serialize_chat_content(self, content: Any) -> Dict[str, Any]:
         """
         Serialize content consistently, handling TextBlocks and other types.
-        This matches the serialization logic in serialize_content() for consistency.
+        Always returns a Dict[str, Any] with 'type' and 'text' keys.
         """
-        if hasattr(content, 'text'):  # TextBlock or similar
-            return {"type": "text", "text": str(content.text) if content.text else ""}
-        elif isinstance(content, dict):
-            # Keep existing type if present, otherwise treat as text
-            if 'type' in content and 'text' in content:
-                return content
-            return {"type": "text", "text": json.dumps(content)}
-        elif hasattr(content, '__dict__'):  # Custom objects
-            return {"type": "text", "text": str(content.__dict__)}
-        else:
-            return {"type": "text", "text": str(content)}
+        # Handle None or empty content
+        if content is None:
+            return {"type": "text", "text": ""}
+            
+        # If already properly formatted, return as is
+        if isinstance(content, dict) and 'type' in content and 'text' in content:
+            return content
+            
+        # Handle TextBlock or Rich-renderable objects
+        if hasattr(content, 'text') or hasattr(content, '__rich__'):
+            text = str(content.text) if hasattr(content, 'text') else str(content)
+            return {"type": "text", "text": text.strip()}
+            
+        # Handle lists by recursively serializing items
+        if isinstance(content, (list, tuple)):
+            serialized_items = [self._serialize_chat_content(item) for item in content]
+            # If all items are dicts with type/text, return them as a list
+            if all(isinstance(item, dict) and 'type' in item and 'text' in item for item in serialized_items):
+                return {"type": "text", "text": "\n".join(item['text'] for item in serialized_items)}
+            return {"type": "text", "text": json.dumps(serialized_items, indent=2)}
+            
+        # Handle dictionaries
+        if isinstance(content, dict):
+            try:
+                return {"type": "text", "text": json.dumps(content, indent=2)}
+            except (TypeError, json.JSONDecodeError):
+                return {"type": "text", "text": str(content)}
+                
+        # Handle everything else
+        return {"type": "text", "text": str(content)}
 
     async def chat(self, user_input: Union[str, List[Any]]) -> str:
         """
