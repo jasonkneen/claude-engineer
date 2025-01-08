@@ -151,7 +151,16 @@ class FileContentReaderTool(BaseTool):
             # Convert relative paths to absolute paths
             def make_absolute(path):
                 if not os.path.isabs(path):
-                    return os.path.abspath(os.path.join(os.getcwd(), path))
+                    # Try current directory first
+                    abs_path = os.path.abspath(os.path.join(os.getcwd(), path))
+                    if os.path.exists(abs_path):
+                        return abs_path
+                    # Try tools directory next
+                    tools_path = os.path.abspath(os.path.join(os.getcwd(), 'tools', path))
+                    if os.path.exists(tools_path):
+                        return tools_path
+                    # Return original resolved path if neither exists
+                    return abs_path
                 return path
 
             # For single file, return formatted content directly
@@ -198,19 +207,25 @@ class FileContentReaderTool(BaseTool):
             from rich.syntax import Syntax
             from rich.console import Group
 
-            # Create syntax-highlighted code block
+            # Create and render syntax-highlighted code block
+            console = Console(record=True)
             code = Syntax(cleaned_result, "python", theme="monokai", line_numbers=True)
+            console.print(code)
+            rendered_code = console.export_text().strip()
             
             # Create input section
             input_section = f"[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input, indent=2)}"
             
-            # Group the components
+            # Create console for rendering
+            display_console = Console(record=True)
+            
+            # Create and render group
             content = Group(
                 input_section,
                 "[cyan]📤 Result:[/cyan]",
-                code
+                rendered_code
             )
-
+            
             # Create panel with proper styling
             panel = Panel(
                 content,
@@ -220,7 +235,11 @@ class FileContentReaderTool(BaseTool):
                 padding=(0, 1)
             )
             
-            return {"type": "text", "text": str(panel)}
+            # Render the panel to text
+            display_console.print(panel)
+            final_output = display_console.export_text().strip()
+            
+            return {"type": "text", "text": final_output}
 
         except Exception as e:
             return {"type": "text", "text": f"Error: {str(e)}"}

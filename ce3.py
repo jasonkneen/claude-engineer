@@ -616,32 +616,35 @@ class Assistant:
                 return {"type": "text", "text": str(content)}
 
         # Import Rich components we need to check
-        from rich.console import Console
+        from rich.console import Console, Group, RenderableType
         from rich.syntax import Syntax
         from rich.text import Text, TextType
         from rich.panel import Panel
 
         # Handle Rich library objects first
-        if isinstance(content, (Syntax, Text, Panel, TextType)) or hasattr(content, '__rich__'):
+        if isinstance(content, (Syntax, Text, Panel, TextType, Group)) or hasattr(content, '__rich__'):
             try:
                 # Create console for rendering
-                console = Console(record=True)
+                console = Console(record=True, force_terminal=True)
                 
                 # Handle specific Rich types
                 if isinstance(content, Syntax):
                     console.print(content)
-                    rendered = console.export_text().strip()
+                    rendered = console.export_text(styles=True).strip()
                     return {"type": "text", "text": rendered}
                     
                 if isinstance(content, (Text, TextType)):
+                    # Handle Rich Text objects specifically
+                    if isinstance(content, Text) and hasattr(content, 'plain'):
+                        return {"type": "text", "text": content.plain}
                     return {"type": "text", "text": str(content)}
                     
-                if isinstance(content, Panel):
+                if isinstance(content, (Panel, Group)):
                     console.print(content)
-                    rendered = console.export_text().strip()
+                    rendered = console.export_text(styles=True).strip()
                     return {"type": "text", "text": rendered}
                 
-                # For other Rich objects, use console export
+                # For other Rich objects, use console export with styles
                 console.print(content)
                 rendered = console.export_text().strip()
                 if rendered:
