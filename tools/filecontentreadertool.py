@@ -206,11 +206,7 @@ class FileContentReaderTool(BaseTool):
                 formatted = format_content(path, content)
                 formatted_files.append(f"File: {path}\n{formatted}")
             
-            # Join all formatted files with proper spacing
-            from rich.console import Console
-            from io import StringIO
-
-            # Format with proper styling
+            # Format with plain text
             cleaned_input = file_paths
             cleaned_result = "\n\n".join(formatted_files)
             
