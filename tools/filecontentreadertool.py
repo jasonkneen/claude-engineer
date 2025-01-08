@@ -1,8 +1,7 @@
 from tools.base import BaseTool
-from typing import Dict, Any, Union
+from typing import Union, Dict, Any
 import os
 import json
-import logging
 import mimetypes
 
 class FileContentReaderTool(BaseTool):
@@ -14,41 +13,6 @@ class FileContentReaderTool(BaseTool):
     Handles file reading errors gracefully with built-in Python exceptions.
     When given a directory, recursively reads all text files while skipping binaries and common ignore patterns.
     '''
-    def ensure_serializable(self, obj):
-        """Ensure all objects are JSON serializable, with special handling for TextBlock and Rich objects."""
-        # Handle TextBlock objects (from prompt_toolkit)
-        if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
-            return str(obj.text) if hasattr(obj, 'text') else str(obj)
-        
-        # Handle Rich objects
-        if hasattr(obj, '__rich__'):
-            from rich.console import Console
-            console = Console(record=True, force_terminal=True)
-            console.print(obj)
-            return console.export_text(styles=True).strip()
-        
-        # Handle dictionaries recursively
-        if isinstance(obj, dict):
-            return {k: self.ensure_serializable(v) for k, v in obj.items()}
-        
-        # Handle lists and tuples recursively
-        if isinstance(obj, (list, tuple)):
-            return [self.ensure_serializable(item) for item in obj]
-        
-        # Handle objects with text attribute
-        if hasattr(obj, 'text'):
-            return str(obj.text)
-        
-        # Handle objects with plain attribute
-        if hasattr(obj, 'plain'):
-            return str(obj.plain)
-        
-        # Test if object is JSON serializable
-        try:
-            json.dumps(obj)
-            return obj
-        except (TypeError, ValueError):
-            return str(obj)
     
     # Files and directories to ignore
     IGNORE_PATTERNS = {
@@ -153,174 +117,37 @@ class FileContentReaderTool(BaseTool):
 
         return results
 
-    def execute(self, **kwargs) -> Dict[str, Any]:
-        """Read file contents and return them as properly formatted code blocks with proper styling."""
-        # Convert TextBlock objects immediately at the start
-        def convert_textblock(obj):
-            """Convert TextBlock objects to strings immediately."""
-            try:
-                if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
-                    return str(obj.text) if hasattr(obj, 'text') else str(obj)
-                return obj
-            except Exception as e:
-                logging.error(f"Error converting TextBlock: {str(e)}")
-                return str(obj)
-
-        # Convert any input kwargs that might contain TextBlock objects
-        try:
-            kwargs = {k: convert_textblock(v) for k, v in kwargs.items()}
-        except Exception as e:
-            logging.error(f"Error converting kwargs: {str(e)}")
-            kwargs = {k: str(v) for k, v in kwargs.items()}
-        
-        # Import Rich components after TextBlock conversion
-        from rich import box
-        from rich.panel import Panel
-        from rich.console import Console
-        from rich.text import Text
-        from rich.syntax import Syntax
-        import json
-
-
+    def execute(self, **kwargs) -> str:
+        """
+        Read file contents and return them as a string.
+        The type/text wrapping will be handled by the Assistant class's serialization.
+        """
         file_paths = kwargs.get('file_paths', [])
-        
-        def detect_language(path: str) -> str:
-            """Detect language based on file extension."""
-            ext = os.path.splitext(path)[1].lstrip('.')
-            return {
-                'py': 'python',
-                'js': 'javascript',
-                'ts': 'typescript',
-                'json': 'json',
-                'md': 'markdown',
-                'html': 'html',
-                'css': 'css',
-                'sh': 'bash',
-            }.get(ext, 'text')
-
-        def format_content(path: str, content: str) -> str:
-            """Format content as a code block with detected language."""
-            lang = detect_language(path)
-            return f"```{lang}\n{content}\n```"
+        results = {}
 
         try:
             if not file_paths:
-                return {"type": "text", "text": "Error: No file paths provided"}
-                
-            # Convert relative paths to absolute paths
-            def make_absolute(path):
-                if not os.path.isabs(path):
-                    # Try current directory first
-                    abs_path = os.path.abspath(os.path.join(os.getcwd(), path))
-                    if os.path.exists(abs_path):
-                        return abs_path
-                    # Try tools directory next
-                    tools_path = os.path.abspath(os.path.join(os.getcwd(), 'tools', path))
-                    if os.path.exists(tools_path):
-                        return tools_path
-                    # Return original resolved path if neither exists
-                    return abs_path
-                return path
+                return "Error: No file paths provided"
 
-            # For single file, return formatted content directly
+            # For single file, return content directly
             if len(file_paths) == 1:
-                path = make_absolute(file_paths[0])
+                path = file_paths[0]
                 if os.path.isdir(path):
                     dir_results = self._read_directory(path)
-                    formatted = "\n\n".join(
-                        f"File: {p}\n{format_content(p, c)}" 
-                        for p, c in dir_results.items()
-                    )
-                    return {"type": "text", "text": formatted}
+                    return "\n".join(f"{p}: {c}" for p, c in dir_results.items())
                 else:
                     content = self._read_file(path)
-                    formatted = format_content(path, content)
-                    return {"type": "text", "text": formatted}
+                    return str(content)
 
-            # For multiple files, return formatted content for each
-            results = {}
+            # For multiple files, return newline-separated content
             for path in file_paths:
-                abs_path = make_absolute(path)
-                if os.path.isdir(abs_path):
-                    dir_results = self._read_directory(abs_path)
+                if os.path.isdir(path):
+                    dir_results = self._read_directory(path)
                     results.update(dir_results)
                 else:
-                    content = self._read_file(abs_path)
-                    results[abs_path] = content
-
-            # Format each file's content with proper code blocks
-            formatted_files = []
-            for path, content in results.items():
-                formatted = format_content(path, content)
-                formatted_files.append(f"File: {path}\n{formatted}")
-            
-            # Format with plain text
-            cleaned_input = file_paths
-            cleaned_result = "\n\n".join(formatted_files)
-            
-            # Format with proper styling
-            from rich.syntax import Syntax
-            from rich.console import Group
-
-            # Create a single console for all rendering
-            console = Console(record=True, force_terminal=True)
-            
-            # Create and render input section
-            console.print(f"[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input, indent=2)}")
-            input_rendered = console.export_text().strip()
-            console.clear()
-            
-            # Create and render result header
-            console.print("[cyan]📤 Result:[/cyan]")
-            result_header = console.export_text().strip()
-            console.clear()
-            
-            # Create and render syntax-highlighted code block with proper language detection
-            code = Syntax(
-                cleaned_result,
-                detect_language(file_paths[0]) if len(file_paths) == 1 else "text",
-                theme="monokai",
-                line_numbers=True,
-                word_wrap=True
-            )
-            console.print(code)
-            rendered_code = console.export_text(styles=True).strip()
-            console.clear()
-            
-            # Combine all parts with proper spacing
-            final_content = f"{input_rendered}\n\n{result_header}\n{rendered_code}"
-            
-            # Create final console for panel
-            final_console = Console(record=True, force_terminal=True)
-            
-            # Create and render final panel with TextBlock handling
-            final_panel = Panel(
-                convert_textblock(final_content),
-                title="Tool used: FileContentReader",
-                title_align="left",
-                border_style="cyan",
-                padding=(0, 1)
-            )
-            
-            # Render panel to string with proper error handling
-            try:
-                # First, ensure the panel itself is properly converted
-                if hasattr(final_panel, '__rich__'):
-                    final_console.print(final_panel)
-                    final_output = convert_textblock(final_console.export_text(styles=True).strip())
-                else:
-                    final_output = convert_textblock(str(final_panel))
-                
-                # Ensure the output is properly serializable
-                result = {"type": "text", "text": str(final_output)}
-                
-                # Verify serialization before returning
-                json.dumps(result)
-                return result
-            except Exception as e:
-                logging.error(f"Error in output processing: {str(e)}")
-                # Fallback to simple string output with minimal formatting
-                return {"type": "text", "text": str(final_content)}
+                    content = self._read_file(path)
+                    results[path] = str(content)
+            return "\n".join(f"{p}: {c}" for p, c in results.items())
 
         except Exception as e:
-            return {"type": "text", "text": f"Error: {str(e)}"}
+            return f"Error: {str(e)}"
