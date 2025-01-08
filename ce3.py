@@ -73,45 +73,41 @@ class Assistant:
         log_file = os.path.join(self.logs_dir, f"conversation_{datetime.now().strftime('%Y%m%d')}.log")
         
         try:
+            # Handle lists of content
+            if isinstance(content, list):
+                formatted_content = ""
+                for item in content:
+                    try:
+                        # Use _serialize_chat_content for consistent serialization
+                        serialized = self._serialize_chat_content(item)
+                        if serialized.get('type') == 'text':
+                            formatted_content += serialized.get('text', '') + '\n'
+                        elif serialized.get('type') == 'tool_use':
+                            formatted_content += f"[Tool Use: {serialized.get('name')}]\n"
+                        elif serialized.get('type') == 'tool_result':
+                            formatted_content += "[Tool Result]\n"
+                            for result_content in serialized.get('content', []):
+                                if isinstance(result_content, dict):
+                                    formatted_content += result_content.get('text', '') + '\n'
+                    except Exception as e:
+                        logging.error(f"Error serializing list item in _log_message: {str(e)}")
+                        formatted_content += f"[Error: {str(e)}]\n"
+            else:
+                try:
+                    # Use _serialize_chat_content for consistent serialization
+                    serialized = self._serialize_chat_content(content)
+                    formatted_content = serialized.get('text', str(content))
+                except Exception as e:
+                    logging.error(f"Error serializing content in _log_message: {str(e)}")
+                    formatted_content = f"[Error: {str(e)}]"
+            
+            # Write to log file
             with open(log_file, 'a', encoding='utf-8') as f:
-                # Format the content based on its type
-                if isinstance(content, list):
-                    # Handle list of content blocks
-                    formatted_content = ""
-                    for item in content:
-                        if isinstance(item, dict):
-                            if item.get('type') == 'text':
-                                formatted_content += item.get('text', '') + '\n'
-                            elif item.get('type') == 'tool_use':
-                                formatted_content += f"[Tool Use: {item.get('name')}]\n"
-                        else:
-                            formatted_content += str(item) + '\n'
-                else:
-                    formatted_content = str(content)
                 
                 # Write the formatted log entry
                 f.write(f"[{timestamp}] {role}: {formatted_content.strip()}\n\n")
         except Exception as e:
             logging.error(f"Error writing to log file: {str(e)}")
-
-    def __init__(self):
-        if not getattr(Config, 'ANTHROPIC_API_KEY', None):
-            raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
-
-        # Initialize Anthropics async client for proper async support
-        self.client = anthropic.AsyncAnthropic(api_key=Config.ANTHROPIC_API_KEY)
-
-        self.conversation_history: List[Dict[str, Any]] = []
-        self.console = Console()
-
-        self.thinking_enabled = getattr(Config, 'ENABLE_THINKING', False)
-        self.temperature = getattr(Config, 'DEFAULT_TEMPERATURE', 0.7)
-        self.total_tokens_used = 0
-
-        # Initialize context manager
-        self.context_manager = ContextManager()
-        
-        self.tools = self._load_tools()
 
     def _execute_uv_install(self, package_name: str) -> bool:
         """
@@ -338,8 +334,8 @@ class Assistant:
                 # Execute the tool with the provided input
                 try:
                     result = tool_instance.execute(**tool_input)
-                    # Keep structured data intact
-                    tool_result = result
+                    # Return raw result and let _serialize_chat_content handle wrapping
+                    tool_result = str(result)
                 except Exception as exec_err:
                     logging.error(f"Tool execution error: {str(exec_err)}", exc_info=True)
                     tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
@@ -433,86 +429,164 @@ class Assistant:
                             result = self._execute_tool(content_block)
                             
                             # Convert result to serializable format
-                            def serialize_content(content):
-                                """Recursively serialize content, handling TextBlocks consistently"""
-                                if hasattr(content, 'text'):  # TextBlock
-                                    return {"type": "text", "text": str(content.text) if content.text else ""}
-                                elif isinstance(content, dict):
-                                    # Keep existing type if present, otherwise serialize recursively
-                                    if 'type' in content and 'text' in content:
-                                        return content
-                                    return {k: serialize_content(v) for k, v in content.items()}
-                                elif isinstance(content, list):
-                                    return [serialize_content(item) for item in content]
-                                elif isinstance(content, str):
-                                    return {"type": "text", "text": content}
+                            # Use _serialize_chat_content for consistent serialization
+
+                            # Format tool result as expected by the API
+                            try:
+                                # First serialize the result using _serialize_chat_content
+                                serialized_result = self._serialize_chat_content(result)
+                                
+                                # Ensure we have a proper type/text dictionary
+                                if isinstance(serialized_result, dict):
+                                    if serialized_result.get('type') == 'text':
+                                        content_list = [serialized_result]
+                                    elif serialized_result.get('type') == 'tool_result':
+                                        # If it's already a tool result, use its content
+                                        content_list = serialized_result.get('content', [])
+                                    else:
+                                        # Convert to proper format
+                                        content_list = [{
+                                            "type": "text",
+                                            "text": serialized_result.get('text', str(result))
+                                        }]
                                 else:
-                                    try:
-                                        # Try JSON serialization first
-                                        json.dumps(content)
-                                        # If it's JSON serializable but not a dict/list/str, wrap it
-                                        if not isinstance(content, (dict, list, str)):
-                                            return {"type": "text", "text": str(content)}
-                                        return content
-                                    except (TypeError, json.JSONDecodeError):
-                                        return {"type": "text", "text": str(content)}
-
-                            serialized_result = serialize_content(result)
-
-                            # Create the tool result with consistently formatted content
-                            tool_result = {
-                                "type": "tool_result",
-                                "tool_use_id": content_block.id,
-                            }
-
-                            # Always wrap content in a list of objects
-                            if isinstance(serialized_result, list):
-                                # If it's already a list, ensure each item has type
-                                tool_result["content"] = [
-                                    {"type": "text", "text": str(item)} if not isinstance(item, dict) else item
-                                    for item in serialized_result
-                                ]
-                            elif isinstance(serialized_result, dict):
-                                # Single dict becomes a list with one item
-                                tool_result["content"] = [serialized_result]
-                            else:
-                                # Any other type becomes a text object in a list
-                                tool_result["content"] = [{"type": "text", "text": str(serialized_result)}]
+                                    # Convert non-dict result to text
+                                    content_list = [{
+                                        "type": "text",
+                                        "text": str(result)
+                                    }]
+                                
+                                # Verify content_list serialization
+                                json.dumps(content_list)
+                                
+                                # Create tool result with verified content
+                                tool_result = {
+                                    "type": "tool_result",
+                                    "tool_use_id": content_block.id,
+                                    "content": content_list
+                                }
+                                
+                                # Final verification of complete tool result
+                                json.dumps(tool_result)
+                                
+                            except Exception as e:
+                                logging.error(f"Error serializing tool result: {str(e)}")
+                                # Fallback to simple string representation
+                                tool_result = {
+                                    "type": "tool_result",
+                                    "tool_use_id": content_block.id,
+                                    "content": [{"type": "text", "text": str(result)}]
+                                }
 
                             tool_results.append(tool_result)
 
-                    # Ensure tool results are properly serialized
+                    # Format tool results as expected by the API
                     serialized_tool_results = []
                     for result in tool_results:
-                        if isinstance(result, dict):
-                            try:
-                                # Test JSON serialization
-                                json.dumps(result)
-                                serialized_tool_results.append(result)
-                            except (TypeError, json.JSONDecodeError):
-                                # Convert to simple text format if serialization fails
-                                serialized_tool_results.append({
+                        if isinstance(result, dict) and result.get('type') == 'tool_result':
+                            serialized_tool_results.append(result)
+                        else:
+                            # Convert to proper tool result format
+                            serialized_tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": result.get('tool_use_id', ''),
+                                "content": [{
                                     "type": "text",
                                     "text": str(result)
-                                })
-                        else:
-                            serialized_tool_results.append({
-                                "type": "text",
-                                "text": str(result)
+                                }]
                             })
 
                     # First append the assistant's tool use request
-                    self.conversation_history.append({
-                        "role": "assistant",
-                        "content": response.content  # Keep original content with tool_use blocks
-                    })
+                    try:
+                        # Serialize the response content
+                        serialized_content = []
+                        for item in response.content:
+                            if hasattr(item, 'text'):
+                                serialized_item = self._serialize_chat_content(item)
+                                serialized_content.append(serialized_item)
+                            elif isinstance(item, dict):
+                                if item.get('type') == 'tool_use':
+                                    # Keep tool_use blocks as is
+                                    serialized_content.append(item)
+                                else:
+                                    # Handle other dict content
+                                    serialized_item = self._serialize_chat_content(item)
+                                    serialized_content.append(serialized_item)
+                            else:
+                                # Handle any other content
+                                serialized_item = self._serialize_chat_content(item)
+                                serialized_content.append(serialized_item)
+                        
+                        # Verify serialization
+                        json.dumps(serialized_content)
+                        
+                        # Add assistant message with tool use request
+                        self.conversation_history.append({
+                            "role": "assistant",
+                            "content": serialized_content
+                        })
+                        
+                        # Then execute tools and collect results
+                        tool_results = []
+                        for content_block in response.content:
+                            if isinstance(content_block, dict) and content_block.get('type') == 'tool_use':
+                                result = self._execute_tool(content_block)
+                                try:
+                                    # Serialize the result
+                                    serialized_result = self._serialize_chat_content(result)
+                                    tool_result = {
+                                        "type": "tool_result",
+                                        "tool_use_id": content_block.get('id', ''),
+                                        "content": [serialized_result]
+                                    }
+                                    tool_results.append(tool_result)
+                                except Exception as e:
+                                    logging.error(f"Error serializing tool result: {str(e)}")
+                                    tool_results.append({
+                                        "type": "tool_result",
+                                        "tool_use_id": content_block.get('id', ''),
+                                        "content": [{"type": "text", "text": str(result)}]
+                                    })
+                        
+                        # Add tool results as user message if we have any
+                        if tool_results:
+                            self.conversation_history.append({
+                                "role": "user",
+                                "content": tool_results
+                            })
+                            
+                    except Exception as e:
+                        logging.error(f"Failed to handle tool use and results: {str(e)}")
+                        # Fallback to simple string representation
+                        self.conversation_history.append({
+                            "role": "assistant",
+                            "content": [{"type": "text", "text": str(response.content)}]
+                        })
                     
                     # Then append tool results as user message
                     if tool_results:  # Only append if we have results
-                        self.conversation_history.append({
-                            "role": "user",
-                            "content": serialized_tool_results
-                        })
+                        # Debug: verify tool results are serializable
+                        try:
+                            json.dumps(serialized_tool_results)
+                            logging.debug("Tool results successfully serialized")
+                            self.conversation_history.append({
+                                "role": "user",
+                                "content": serialized_tool_results
+                            })
+                        except Exception as e:
+                            logging.error(f"Failed to serialize tool results: {str(e)}")
+                            # Fallback to simple string representation
+                            self.conversation_history.append({
+                                "role": "user",
+                                "content": [{"type": "text", "text": str(serialized_tool_results)}]
+                            })
+                    
+                    # Debug: verify conversation history is serializable
+                    try:
+                        json.dumps(self.conversation_history)
+                        logging.debug("Conversation history successfully serialized")
+                    except Exception as e:
+                        logging.error(f"Failed to serialize conversation history: {str(e)}")
                     
                     # Properly await the recursive call
                     return await self._get_completion()
@@ -525,46 +599,72 @@ class Assistant:
             if (getattr(response, 'content', None) and 
                 isinstance(response.content, list) and 
                 response.content):
-                # Ensure content is consistently formatted and serializable
-                serializable_content = []
-                for content_item in response.content:
-                    if hasattr(content_item, 'type'):
-                        if content_item.type == 'text':
-                            # Ensure text content is properly formatted
-                            serializable_content.append({
-                                'type': 'text',
-                                'text': str(content_item.text) if content_item.text else ""
-                            })
-                        elif content_item.type == 'tool_use':
-                            # Ensure tool use content has all required fields
-                            tool_use_content = {
-                                'type': 'tool_use',
-                                'id': content_item.id,
-                                'name': content_item.name,
-                            }
-                            # Ensure input is a dictionary
-                            if hasattr(content_item, 'input'):
-                                tool_use_content['input'] = (
-                                    content_item.input if isinstance(content_item.input, dict)
-                                    else {'value': str(content_item.input)}
-                                )
+                try:
+                    # First, serialize the entire response content
+                    response.content = [
+                        self._serialize_chat_content(item) if hasattr(item, 'text')
+                        else item for item in response.content
+                    ]
+                    
+                    # Process the already-serialized content
+                    serializable_content = []
+                    for content_item in response.content:
+                        try:
+                            if isinstance(content_item, dict) and 'type' in content_item:
+                                if content_item['type'] == 'text':
+                                    if content_item.get('text', '').strip():
+                                        serializable_content.append(content_item)
+                                elif content_item['type'] == 'tool_use':
+                                    # Ensure tool use content has all required fields
+                                    tool_use_content = {
+                                        'type': 'tool_use',
+                                        'id': content_item.get('id'),
+                                        'name': content_item.get('name'),
+                                        'input': {}
+                                    }
+                                    # Handle input field
+                                    input_data = content_item.get('input', {})
+                                    if isinstance(input_data, dict):
+                                        tool_use_content['input'] = {
+                                            k: self._serialize_chat_content(v)['text']
+                                            for k, v in input_data.items()
+                                        }
+                                    else:
+                                        tool_use_content['input'] = {
+                                            'value': self._serialize_chat_content(input_data)['text']
+                                        }
+                                    serializable_content.append(tool_use_content)
                             else:
-                                tool_use_content['input'] = {}
-                            serializable_content.append(tool_use_content)
-                    else:
-                        # Convert any untyped content to text type
-                        text_content = str(content_item)
-                        if text_content.strip():  # Only add non-empty content
-                            serializable_content.append({
-                                'type': 'text',
-                                'text': text_content
-                            })
-                
-                final_content = serializable_content[0]['text'] if serializable_content else "No response content available."
-                self.conversation_history.append({
-                    "role": "assistant",
-                    "content": serializable_content
-                })
+                                # Handle any untyped content
+                                serialized = self._serialize_chat_content(content_item)
+                                if serialized['text'].strip():
+                                    serializable_content.append(serialized)
+                        except Exception as e:
+                            logging.error(f"Error serializing content item: {str(e)}")
+                            # Fallback to simple string representation
+                            text = str(content_item)
+                            if text.strip():
+                                serializable_content.append({
+                                    'type': 'text',
+                                    'text': text
+                                })
+                    
+                    # Debug: verify content is serializable
+                    json.dumps(serializable_content)
+                    logging.debug("Successfully serialized response content")
+                    final_content = serializable_content[0]['text'] if serializable_content else "No response content available."
+                    self.conversation_history.append({
+                        "role": "assistant",
+                        "content": serializable_content
+                    })
+                except Exception as e:
+                    logging.error(f"Failed to serialize response content: {str(e)}")
+                    # Fallback to simple string representation
+                    final_content = "Error: Failed to serialize response"
+                    self.conversation_history.append({
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": final_content}]
+                    })
                 return final_content
             else:
                 self.console.print("[red]No content in final response.[/red]")
@@ -613,21 +713,61 @@ class Assistant:
                 pass
 
 
-    def _serialize_chat_content(self, content: Any) -> Dict:
+    def _serialize_chat_content(self, content: Any) -> Dict[str, Any]:
         """
         Serialize content consistently, handling TextBlocks and other types.
-        This matches the serialization logic in serialize_content() for consistency.
+        Returns either:
+        - {"type": "text", "text": str} for regular content
+        - {"type": "tool_result", "tool_use_id": str, "content": List[Dict[str, str]]} for tool results
         """
-        if hasattr(content, 'text'):  # TextBlock or similar
-            return {"type": "text", "text": str(content.text) if content.text else ""}
-        elif isinstance(content, dict):
-            # Keep existing type if present, otherwise treat as text
-            if 'type' in content and 'text' in content:
-                return content
-            return {"type": "text", "text": json.dumps(content)}
-        elif hasattr(content, '__dict__'):  # Custom objects
-            return {"type": "text", "text": str(content.__dict__)}
-        else:
+        try:
+            # Handle None or empty content
+            if content is None:
+                return {"type": "text", "text": ""}
+
+            # Handle TextBlock objects first
+            if hasattr(content, 'text'):
+                text_value = getattr(content, 'text', '')
+                return {"type": "text", "text": str(text_value) if text_value else ""}
+
+            # Handle lists by recursively serializing each item
+            if isinstance(content, list):
+                serialized_items = []
+                for item in content:
+                    serialized = self._serialize_chat_content(item)
+                    if serialized.get('text', '').strip():
+                        serialized_items.append(serialized)
+                return {"type": "text", "text": "\n".join(item['text'] for item in serialized_items)}
+
+            # Handle dictionaries
+            if isinstance(content, dict):
+                # If it's a tool result, preserve the structure
+                if content.get('type') == 'tool_result':
+                    return {
+                        "type": "tool_result",
+                        "tool_use_id": content.get('tool_use_id', ''),
+                        "content": [{"type": "text", "text": str(c)} for c in content.get('content', [])]
+                    }
+                # If it's already properly formatted text, return as is
+                if content.get('type') == 'text' and 'text' in content:
+                    return content
+                # Otherwise serialize the whole dict
+                return {"type": "text", "text": json.dumps(content)}
+
+            # Handle strings directly
+            if isinstance(content, str):
+                return {"type": "text", "text": content}
+
+            # Handle custom objects
+            if hasattr(content, '__dict__'):
+                return {"type": "text", "text": str(content.__dict__)}
+
+            # Handle all other types
+            return {"type": "text", "text": str(content)}
+
+        except Exception as e:
+            logging.error(f"Error in _serialize_chat_content: {str(e)}")
+            # Fallback to simple string representation
             return {"type": "text", "text": str(content)}
 
     async def chat(self, user_input: Union[str, List[Any]]) -> str:
@@ -736,13 +876,24 @@ class Assistant:
             else:
                 response = await self._get_completion()
 
-            # Log assistant response
-            self._log_message("assistant", response)
+            try:
+                # Ensure response is properly serialized
+                if isinstance(response, str):
+                    serialized_response = {"type": "text", "text": response}
+                else:
+                    serialized_response = self._serialize_chat_content(response)
 
-            # Capture context after successful response
-            await self._capture_conversation_context()
-            
-            return response
+                # Log assistant response with serialized content
+                self._log_message("assistant", serialized_response)
+
+                # Capture context after successful response
+                await self._capture_conversation_context()
+                
+                # Return the text content
+                return serialized_response.get('text', str(response))
+            except Exception as e:
+                logging.error(f"Error serializing response in chat: {str(e)}")
+                return f"Error: {str(e)}"
 
         except Exception as e:
             logging.error(f"Error in chat: {str(e)}")
