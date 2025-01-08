@@ -529,19 +529,12 @@ class Assistant:
                             })
                             
                         # Let Claude process the tool results in the next turn
-                        # Add assistant message with tool use request
-                        self.conversation_history.append({
-                            "role": "assistant",
-                            "content": [{"type": "text", "text": "Processing tool results..."}]
-                        })
+                        # Don't add an assistant message, let the API handle the response
                             
                     except Exception as e:
                         logging.error(f"Failed to handle tool use and results: {str(e)}")
-                        # Fallback to simple string representation
-                        self.conversation_history.append({
-                            "role": "assistant",
-                            "content": [{"type": "text", "text": str(response.content)}]
-                        })
+                        # Log the error but don't modify conversation history
+                        logging.error(f"Conversation history: {json.dumps(self.conversation_history, indent=2)}")
                     
                     # Then append tool results as user message
                     if tool_results:  # Only append if we have results
