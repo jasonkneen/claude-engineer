@@ -260,12 +260,12 @@ class Assistant:
         
         # Format tool info with plain text formatting
         tool_output = (
-            f"╭── Tool used: {tool_name} ──╮\n"
-            f"📥 Input: {json.dumps(cleaned_input.get('text', cleaned_input), indent=2)}\n"
-            f"📤 Result: {cleaned_result.get('text', cleaned_result)}\n"
-            f"╰{'─' * 30}╯"
+            f"=== Tool used: {tool_name} ===\n"
+            f"Input: {json.dumps(cleaned_input.get('text', cleaned_input), indent=2)}\n"
+            f"Result: {cleaned_result.get('text', cleaned_result)}\n"
+            f"{'=' * 30}"
         )
-        self.console.print(tool_output)
+        print(tool_output)
 
     def _clean_data_for_display(self, data):
         """Clean data for display.
@@ -403,24 +403,18 @@ class Assistant:
         used_percentage = (self.total_tokens_used / Config.MAX_CONVERSATION_TOKENS) * 100
         remaining_tokens = max(0, Config.MAX_CONVERSATION_TOKENS - self.total_tokens_used)
 
-        self.console.print(f"\nTotal used: {self.total_tokens_used:,} / {Config.MAX_CONVERSATION_TOKENS:,}")
+        print(f"\nTotal used: {self.total_tokens_used:,} / {Config.MAX_CONVERSATION_TOKENS:,}")
 
         bar_width = 40
         filled = int(used_percentage / 100 * bar_width)
-        bar = "█" * filled + "░" * (bar_width - filled)
+        bar = "#" * filled + "-" * (bar_width - filled)
 
-        color = "green"
-        if used_percentage > 75:
-            color = "yellow"
-        if used_percentage > 90:
-            color = "red"
-
-        self.console.print(f"[{color}][{bar}] {used_percentage:.1f}%[/{color}]")
+        print(f"[{bar}] {used_percentage:.1f}%")
 
         if remaining_tokens < 20000:
-            self.console.print(f"[bold red]Warning: Only {remaining_tokens:,} tokens remaining![/bold red]")
+            print(f"Warning: Only {remaining_tokens:,} tokens remaining!")
 
-        self.console.print("---")
+        print("---")
 
     async def _get_completion(self) -> str:
         """
@@ -450,11 +444,11 @@ class Assistant:
                 self._display_token_usage(response.usage)
 
             if self.total_tokens_used >= Config.MAX_CONVERSATION_TOKENS:
-                self.console.print("\n[bold red]Token limit reached! Please reset the conversation.[/bold red]")
+                print("\nToken limit reached! Please reset the conversation.")
                 return "Token limit reached! Please type 'reset' to start a new conversation."
 
             if response.stop_reason == "tool_use":
-                self.console.print("\n[bold yellow]  Handling Tool Use...[/bold yellow]\n")
+                print("\n  Handling Tool Use...\n")
 
                 tool_results = []
                 if getattr(response, 'content', None) and isinstance(response.content, list):
@@ -494,7 +488,7 @@ class Assistant:
                     return await self._get_completion()
 
                 else:
-                    self.console.print("[red]No tool content received despite 'tool_use' stop reason.[/red]")
+                    print("No tool content received despite 'tool_use' stop reason.")
                     return "Error: No tool content received"
 
             # Final assistant response
@@ -543,7 +537,7 @@ class Assistant:
                 })
                 return final_content
             else:
-                self.console.print("[red]No content in final response.[/red]")
+                print("No content in final response.")
                 return "No response content available."
 
         except Exception as e:
