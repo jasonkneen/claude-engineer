@@ -195,35 +195,15 @@ class FileContentReaderTool(BaseTool):
                 formatted = format_content(path, content)
                 formatted_files.append(f"File: {path}\n{formatted}")
             
-            # Join all formatted files with proper spacing
-            from rich.console import Console
-            from io import StringIO
-
-            # Format with proper styling
+            # Format with plain text
             cleaned_input = file_paths
             cleaned_result = "\n\n".join(formatted_files)
             
-            # Format with proper styling
-            from rich.syntax import Syntax
-            from rich.console import Group
-
-            # Create and render syntax-highlighted code block
-            console = Console(record=True)
-            code = Syntax(cleaned_result, "python", theme="monokai", line_numbers=True)
-            console.print(code)
-            rendered_code = console.export_text().strip()
-            
-            # Create input section
-            input_section = f"[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input, indent=2)}"
-            
-            # Create console for rendering
-            display_console = Console(record=True)
-            
-            # Create formatted output string
+            # Create formatted output string with plain text
             formatted_output = [
-                input_section,
-                "[cyan]📤 Result:[/cyan]",
-                rendered_code
+                f"📥 Input: {json.dumps(cleaned_input, indent=2)}",
+                "📤 Result:",
+                cleaned_result
             ]
             
             # Join with proper spacing and add title
