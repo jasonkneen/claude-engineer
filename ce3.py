@@ -373,7 +373,7 @@ class Assistant:
                             logging.error(f"Tool execution timed out: {tool_name}")
                             return {"type": "text", "text": f"Error: Tool execution timed out after 30 seconds"}
                     
-                    # Ensure result is properly serialized
+                    # Use _serialize_chat_content for consistent TextBlock and Rich object handling
                     tool_result = self._serialize_chat_content(result)
                 except Exception as exec_err:
                     logging.error(f"Tool execution error: {str(exec_err)}", exc_info=True)
@@ -468,11 +468,26 @@ class Assistant:
                             # Execute tool and get result (display is handled within _execute_tool)
                             result = await self._execute_tool(content_block)
                             
-                            # Result is already serialized by _execute_tool
-                            serialized_result = result
+                            # Ensure result is properly serialized
+                            def ensure_tool_serializable(obj):
+                                if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
+                                    return str(obj.text) if hasattr(obj, 'text') else str(obj)
+                                elif isinstance(obj, dict):
+                                    return {k: ensure_tool_serializable(v) for k, v in obj.items()}
+                                elif isinstance(obj, (list, tuple)):
+                                    return [ensure_tool_serializable(item) for item in obj]
+                                elif hasattr(obj, '__rich__'):
+                                    from rich.console import Console
+                                    console = Console(record=True, force_terminal=True)
+                                    console.print(obj)
+                                    return console.export_text(styles=True).strip()
+                                return obj
+                            
+                            # Convert any TextBlock or Rich objects in the result
+                            serialized_result = ensure_tool_serializable(result)
 
                             # Create the tool result with consistently formatted content
-                            serialized_content = result  # Already properly serialized
+                            serialized_content = serialized_result  # Now properly serialized
                             if isinstance(serialized_content, dict) and 'text' in serialized_content:
                                 tool_result = {
                                     "type": "tool_result",
@@ -601,6 +616,10 @@ class Assistant:
         # Handle None or empty content
         if content is None:
             return {"type": "text", "text": ""}
+            
+        # Handle TextBlock objects first (from prompt_toolkit)
+        if hasattr(content, '__class__') and content.__class__.__name__ == 'TextBlock':
+            return {"type": "text", "text": str(content.text) if hasattr(content, 'text') else str(content)}
             
         # If already properly formatted, return as is
         if isinstance(content, dict) and 'type' in content and 'text' in content:
@@ -757,6 +776,19 @@ class Assistant:
             except Exception as e:
                 logging.error("Failed to serialize input: %s", str(e))
 
+            # Convert any TextBlock objects in serialized input
+            def ensure_serializable(obj):
+                if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
+                    return str(obj.text) if hasattr(obj, 'text') else str(obj)
+                elif isinstance(obj, dict):
+                    return {k: ensure_serializable(v) for k, v in obj.items()}
+                elif isinstance(obj, (list, tuple)):
+                    return [ensure_serializable(item) for item in obj]
+                return obj
+
+            # Ensure input is serializable before adding to history
+            serialized_input = ensure_serializable(serialized_input)
+            
             # Add serialized user message to conversation history
             self.conversation_history.append({
                 "role": "user",
@@ -927,7 +959,22 @@ Available tools:
             try:
                 # Use asyncio.shield to protect the prompt operation
                 user_input = await asyncio.shield(session.prompt_async("You: "))
-                user_input = user_input.strip()
+                
+                # Handle TextBlock objects from prompt_toolkit immediately
+                if hasattr(user_input, '__class__') and user_input.__class__.__name__ == 'TextBlock':
+                    user_input = str(user_input.text) if hasattr(user_input, 'text') else str(user_input)
+                elif isinstance(user_input, (dict, list)):
+                    # Handle nested TextBlocks in complex structures
+                    def convert_nested_textblocks(obj):
+                        if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
+                            return str(obj.text) if hasattr(obj, 'text') else str(obj)
+                        elif isinstance(obj, dict):
+                            return {k: convert_nested_textblocks(v) for k, v in obj.items()}
+                        elif isinstance(obj, (list, tuple)):
+                            return [convert_nested_textblocks(item) for item in obj]
+                        return obj
+                    user_input = convert_nested_textblocks(user_input)
+                user_input = str(user_input).strip()
 
                 if user_input.lower() == 'quit':
                     console.print("\n[bold blue]\U0001F44B Goodbye![/bold blue]")

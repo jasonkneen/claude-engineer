@@ -121,7 +121,18 @@ class FileContentReaderTool(BaseTool):
         """Read file contents and return them as properly formatted code blocks with proper styling."""
         from rich import box
         from rich.panel import Panel
+        from rich.console import Console
         import json
+
+        def ensure_serializable(obj):
+            """Convert TextBlock objects to strings."""
+            if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
+                return str(obj.text) if hasattr(obj, 'text') else str(obj)
+            elif isinstance(obj, dict):
+                return {k: ensure_serializable(v) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                return [ensure_serializable(item) for item in obj]
+            return obj
 
         file_paths = kwargs.get('file_paths', [])
         
@@ -207,39 +218,47 @@ class FileContentReaderTool(BaseTool):
             from rich.syntax import Syntax
             from rich.console import Group
 
+            # Create a single console for all rendering
+            console = Console(record=True, force_terminal=True)
+            
+            # Create and render input section
+            console.print(f"[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input, indent=2)}")
+            input_rendered = console.export_text().strip()
+            console.clear()
+            
+            # Create and render result header
+            console.print("[cyan]📤 Result:[/cyan]")
+            result_header = console.export_text().strip()
+            console.clear()
+            
             # Create and render syntax-highlighted code block
-            console = Console(record=True)
             code = Syntax(cleaned_result, "python", theme="monokai", line_numbers=True)
             console.print(code)
             rendered_code = console.export_text().strip()
+            console.clear()
             
-            # Create input section
-            input_section = f"[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input, indent=2)}"
+            # Combine all parts with proper spacing
+            final_content = f"{input_rendered}\n\n{result_header}\n{rendered_code}"
             
-            # Create console for rendering
-            display_console = Console(record=True)
+            # Create final console for panel
+            final_console = Console(record=True, force_terminal=True)
             
-            # Create and render group
-            content = Group(
-                input_section,
-                "[cyan]📤 Result:[/cyan]",
-                rendered_code
-            )
-            
-            # Create panel with proper styling
-            panel = Panel(
-                content,
+            # Create and render final panel
+            final_panel = Panel(
+                final_content,
                 title="Tool used: FileContentReader",
                 title_align="left",
                 border_style="cyan",
                 padding=(0, 1)
             )
             
-            # Render the panel to text
-            display_console.print(panel)
-            final_output = display_console.export_text().strip()
+            # Render panel to string, ensuring all Rich objects are converted
+            final_console.print(final_panel)
+            final_output = final_console.export_text().strip()
             
-            return {"type": "text", "text": final_output}
+            # Ensure result is serializable before returning
+            result = {"type": "text", "text": final_output}
+            return ensure_serializable(result)
 
         except Exception as e:
             return {"type": "text", "text": f"Error: {str(e)}"}
