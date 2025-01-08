@@ -536,24 +536,6 @@ class Assistant:
                         # Log the error but don't modify conversation history
                         logging.error(f"Conversation history: {json.dumps(self.conversation_history, indent=2)}")
                     
-                    # Then append tool results as user message
-                    if tool_results:  # Only append if we have results
-                        # Debug: verify tool results are serializable
-                        try:
-                            json.dumps(serialized_tool_results)
-                            logging.debug("Tool results successfully serialized")
-                            self.conversation_history.append({
-                                "role": "user",
-                                "content": serialized_tool_results
-                            })
-                        except Exception as e:
-                            logging.error(f"Failed to serialize tool results: {str(e)}")
-                            # Fallback to simple string representation
-                            self.conversation_history.append({
-                                "role": "user",
-                                "content": [{"type": "text", "text": str(serialized_tool_results)}]
-                            })
-                    
                     # Debug: verify conversation history is serializable
                     try:
                         json.dumps(self.conversation_history)
@@ -561,8 +543,8 @@ class Assistant:
                     except Exception as e:
                         logging.error(f"Failed to serialize conversation history: {str(e)}")
                     
-                    # Properly await the recursive call
-                    return await self._get_completion()
+                    # Return empty string to let the next natural API call handle the tool results
+                    return ""
 
                 else:
                     self.console.print("[red]No tool content received despite 'tool_use' stop reason.[/red]")
