@@ -14,13 +14,6 @@ import anthropic
 import psutil
 from prompt_toolkit.shortcuts import PromptSession
 from prompt_toolkit.styles import Style
-from rich.console import Console, Group
-from rich.live import Live
-from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.spinner import Spinner
-from rich.syntax import Syntax
-from rich.text import Text
 
 from config import Config
 
@@ -54,8 +47,7 @@ class Assistant:
         self.client = anthropic.AsyncAnthropic(api_key=Config.ANTHROPIC_API_KEY)
 
         self.conversation_history: List[Dict[str, Any]] = []
-        self.console = Console()
-
+        
         self.thinking_enabled = getattr(Config, 'ENABLE_THINKING', False)
         self.temperature = getattr(Config, 'DEFAULT_TEMPERATURE', 0.7)
         self.total_tokens_used = 0
@@ -116,10 +108,10 @@ class Assistant:
         result = self._execute_tool(ToolUseMock())
         result_text = result['text'] if isinstance(result, dict) and 'text' in result else str(result)
         if "Error" not in result_text and "failed" not in result_text.lower():
-            self.console.print("[green]The package was installed successfully.[/green]")
+            print("The package was installed successfully.")
             return True
         else:
-            self.console.print(f"[red]Failed to install {package_name}. Output:[/red] {result_text}")
+            print(f"Failed to install {package_name}. Output: {result_text}")
             return False
 
     def _load_tools(self) -> List[Dict[str, Any]]:
@@ -134,7 +126,7 @@ class Assistant:
         tools_path = getattr(Config, 'TOOLS_DIR', None)
 
         if tools_path is None:
-            self.console.print("[red]TOOLS_DIR not set in Config[/red]")
+            print("Error: TOOLS_DIR not set in Config")
             return tools
 
         # Clear cached tool modules for fresh import
@@ -154,7 +146,7 @@ class Assistant:
                 except ImportError as e:
                     # Handle missing dependencies
                     missing_module = self._parse_missing_dependency(str(e))
-                    self.console.print(f"\n[yellow]Missing dependency:[/yellow] {missing_module} for tool {module_info.name}")
+                    print(f"\nMissing dependency: {missing_module} for tool {module_info.name}")
                     user_response = input(f"Would you like to install {missing_module}? (y/n): ").lower()
 
                     if user_response == 'y':
@@ -165,15 +157,15 @@ class Assistant:
                                 module = importlib.import_module(f'tools.{module_info.name}')
                                 self._extract_tools_from_module(module, tools)
                             except Exception as retry_err:
-                                self.console.print(f"[red]Failed to load tool after installation: {str(retry_err)}[/red]")
+                                print(f"Failed to load tool after installation: {str(retry_err)}")
                         else:
-                            self.console.print(f"[red]Installation of {missing_module} failed. Skipping this tool.[/red]")
+                            print(f"Installation of {missing_module} failed. Skipping this tool.")
                     else:
-                        self.console.print(f"[yellow]Skipping tool {module_info.name} due to missing dependency[/yellow]")
+                        print(f"Skipping tool {module_info.name} due to missing dependency")
                 except Exception as mod_err:
-                    self.console.print(f"[red]Error loading module {module_info.name}:[/red] {str(mod_err)}")
+                    print(f"Error loading module {module_info.name}: {str(mod_err)}")
         except Exception as overall_err:
-            self.console.print(f"[red]Error in tool loading process:[/red] {str(overall_err)}")
+            print(f"Error in tool loading process: {str(overall_err)}")
 
         return tools
 
@@ -202,9 +194,9 @@ class Assistant:
                         "description": tool_instance.description,
                         "input_schema": tool_instance.input_schema
                     })
-                    self.console.print(f"[green]Loaded tool:[/green] {tool_instance.name}")
+                    print(f"Loaded tool: {tool_instance.name}")
                 except Exception as tool_init_err:
-                    self.console.print(f"[red]Error initializing tool {name}:[/red] {str(tool_init_err)}")
+                    print(f"Error initializing tool {name}: {str(tool_init_err)}")
 
     def refresh_tools(self):
         """
@@ -216,28 +208,28 @@ class Assistant:
         new_tools = new_tool_names - current_tool_names
 
         if new_tools:
-            self.console.print("\n")
+            print("\n")
             for tool_name in new_tools:
                 tool_info = next((t for t in self.tools if t['name'] == tool_name), None)
                 if tool_info:
                     description_lines = tool_info['description'].strip().split('\n')
                     formatted_description = '\n    '.join(line.strip() for line in description_lines)
-                    self.console.print(f"[bold green]NEW[/bold green] 🔧 [cyan]{tool_name}[/cyan]:\n    {formatted_description}")
+                    print(f"NEW 🔧 {tool_name}:\n    {formatted_description}")
         else:
-            self.console.print("\n[yellow]No new tools found[/yellow]")
+            print("\nNo new tools found")
 
     def display_available_tools(self):
         """
         Print a list of currently loaded tools.
         """
-        self.console.print("\n[bold cyan]Available tools:[/bold cyan]")
+        print("\nAvailable tools:")
         tool_names = [tool['name'] for tool in self.tools]
         if tool_names:
-            formatted_tools = ", ".join([f"🔧 [cyan]{name}[/cyan]" for name in tool_names])
+            formatted_tools = ", ".join([f"🔧 {name}" for name in tool_names])
         else:
             formatted_tools = "No tools available."
-        self.console.print(formatted_tools)
-        self.console.print("\n---")
+        print(formatted_tools)
+        print("\n---")
 
     def _display_tool_usage(self, tool_name: str, input_data: Dict, result: Union[str, Dict[str, Any]]):
         """
@@ -822,11 +814,11 @@ class Assistant:
             # Clear conversation history and reset token usage
             self.conversation_history = []
             self.total_tokens_used = 0
-            self.console.print("\n[bold green]🔄 Assistant memory has been reset![/bold green]")
+            print("\n🔄 Assistant memory has been reset!")
         except Exception as e:
             error_msg = f"Critical error during reset operation: {str(e)}"
             logging.error(error_msg, exc_info=True)
-            self.console.print(f"\n[bold red]Error:[/bold red] {error_msg}")
+            print(f"\nError: {error_msg}")
             raise  # Re-raise to ensure caller knows about the failure
 
         welcome_text = """
