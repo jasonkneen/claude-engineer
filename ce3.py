@@ -460,37 +460,17 @@ class Assistant:
 
                             tool_results.append(tool_result)
 
-                    # Ensure tool results are properly serialized
-                    serialized_tool_results = []
-                    for result in tool_results:
-                        if isinstance(result, dict):
-                            try:
-                                # Test JSON serialization
-                                json.dumps(result)
-                                serialized_tool_results.append(result)
-                            except (TypeError, json.JSONDecodeError):
-                                # Convert to simple text format if serialization fails
-                                serialized_tool_results.append({
-                                    "type": "text",
-                                    "text": str(result)
-                                })
-                        else:
-                            serialized_tool_results.append({
-                                "type": "text",
-                                "text": str(result)
-                            })
-
                     # First append the assistant's tool use request
                     self.conversation_history.append({
                         "role": "assistant",
                         "content": response.content  # Keep original content with tool_use blocks
                     })
                     
-                    # Then append tool results as user message
+                    # Then append tool results as assistant message
                     if tool_results:  # Only append if we have results
                         self.conversation_history.append({
-                            "role": "user",
-                            "content": serialized_tool_results
+                            "role": "assistant",
+                            "content": tool_results  # Use already serialized tool_results
                         })
                     
                     # Properly await the recursive call

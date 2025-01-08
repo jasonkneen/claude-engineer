@@ -40,7 +40,7 @@ class ContextManager:
     async def generate_summary(self, context: str) -> str:
         """Generates an AI summary of the context using Claude."""
         try:
-            message = await self.client.messages.create(
+            response = await self.client.messages.create(
                 model=Config.MODEL,
                 max_tokens=Config.CONTEXT_SUMMARY_MAX_TOKENS,
                 temperature=Config.CONTEXT_SUMMARY_TEMPERATURE,
@@ -49,10 +49,16 @@ class ContextManager:
                     "content": Config.CONTEXT_SUMMARY_PROMPT.format(context=context)
                 }]
             )
-            return message.content[0].text if message.content else ""
+            # Handle the response content properly
+            if response and hasattr(response, 'content') and response.content:
+                # Extract text from the first content block
+                content = response.content[0]
+                if hasattr(content, 'text'):
+                    return content.text
+            return ""
         except Exception as e:
             print(f"Error generating summary: {e}")
-            return ""  # Return empty string instead of None to match return type
+            return ""
 
     def cleanup_old_contexts(self) -> None:
         """Archives old context entries when threshold is reached."""
