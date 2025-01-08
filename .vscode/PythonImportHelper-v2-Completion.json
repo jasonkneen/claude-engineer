@@ -223,6 +223,14 @@
         "documentation": {}
     },
     {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
         "label": "argparse",
         "kind": 6,
         "isExtraImport": true,
@@ -571,6 +579,22 @@
         "documentation": {}
     },
     {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "List",
         "importPath": "typing",
         "description": "typing",
@@ -620,6 +644,46 @@
     },
     {
         "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -721,6 +785,24 @@
         "importPath": "collections",
         "description": "collections",
         "detail": "collections",
+        "documentation": {}
+    },
+    {
+        "label": "runpy",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "runpy",
+        "description": "runpy",
+        "detail": "runpy",
+        "documentation": {}
+    },
+    {
+        "label": "site",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "site",
+        "description": "site",
+        "detail": "site",
         "documentation": {}
     },
     {
@@ -913,6 +995,22 @@
         "documentation": {}
     },
     {
+        "label": "Console",
+        "importPath": "rich.console",
+        "description": "rich.console",
+        "isExtraImport": true,
+        "detail": "rich.console",
+        "documentation": {}
+    },
+    {
+        "label": "Panel",
+        "importPath": "rich.panel",
+        "description": "rich.panel",
+        "isExtraImport": true,
+        "detail": "rich.panel",
+        "documentation": {}
+    },
+    {
         "label": "Panel",
         "importPath": "rich.panel",
         "description": "rich.panel",
@@ -966,6 +1064,14 @@
         "description": "rich.syntax",
         "isExtraImport": true,
         "detail": "rich.syntax",
+        "documentation": {}
+    },
+    {
+        "label": "Markdown",
+        "importPath": "rich.markdown",
+        "description": "rich.markdown",
+        "isExtraImport": true,
+        "detail": "rich.markdown",
         "documentation": {}
     },
     {
@@ -1058,6 +1164,14 @@
         "documentation": {}
     },
     {
+        "label": "Style",
+        "importPath": "prompt_toolkit.styles",
+        "description": "prompt_toolkit.styles",
+        "isExtraImport": true,
+        "detail": "prompt_toolkit.styles",
+        "documentation": {}
+    },
+    {
         "label": "glob",
         "kind": 6,
         "isExtraImport": true,
@@ -1106,6 +1220,22 @@
         "isExtraImport": true,
         "importPath": "datetime",
         "description": "datetime",
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
         "detail": "datetime",
         "documentation": {}
     },
@@ -1430,6 +1560,22 @@
         "documentation": {}
     },
     {
+        "label": "BaseTool",
+        "importPath": "tools.base",
+        "description": "tools.base",
+        "isExtraImport": true,
+        "detail": "tools.base",
+        "documentation": {}
+    },
+    {
+        "label": "BaseTool",
+        "importPath": "tools.base",
+        "description": "tools.base",
+        "isExtraImport": true,
+        "detail": "tools.base",
+        "documentation": {}
+    },
+    {
         "label": "webbrowser",
         "kind": 6,
         "isExtraImport": true,
@@ -1586,6 +1732,14 @@
         "documentation": {}
     },
     {
+        "label": "Config",
+        "importPath": "config",
+        "description": "config",
+        "isExtraImport": true,
+        "detail": "config",
+        "documentation": {}
+    },
+    {
         "label": "requests",
         "kind": 6,
         "isExtraImport": true,
@@ -1624,6 +1778,15 @@
         "description": "e2b_code_interpreter",
         "isExtraImport": true,
         "detail": "e2b_code_interpreter",
+        "documentation": {}
+    },
+    {
+        "label": "uuid",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "uuid",
+        "description": "uuid",
+        "detail": "uuid",
         "documentation": {}
     },
     {
@@ -1672,6 +1835,14 @@
         "description": "flask",
         "isExtraImport": true,
         "detail": "flask",
+        "documentation": {}
+    },
+    {
+        "label": "JSONEncoder",
+        "importPath": "flask.json",
+        "description": "flask.json",
+        "isExtraImport": true,
+        "detail": "flask.json",
         "documentation": {}
     },
     {
@@ -1752,6 +1923,22 @@
         "documentation": {}
     },
     {
+        "label": "PromptSession",
+        "importPath": "prompt_toolkit.shortcuts",
+        "description": "prompt_toolkit.shortcuts",
+        "isExtraImport": true,
+        "detail": "prompt_toolkit.shortcuts",
+        "documentation": {}
+    },
+    {
+        "label": "Live",
+        "importPath": "rich.live",
+        "description": "rich.live",
+        "isExtraImport": true,
+        "detail": "rich.live",
+        "documentation": {}
+    },
+    {
         "label": "Live",
         "importPath": "rich.live",
         "description": "rich.live",
@@ -1784,6 +1971,14 @@
         "documentation": {}
     },
     {
+        "label": "Spinner",
+        "importPath": "rich.spinner",
+        "description": "rich.spinner",
+        "isExtraImport": true,
+        "detail": "rich.spinner",
+        "documentation": {}
+    },
+    {
         "label": "SystemPrompts",
         "importPath": "prompts.system_prompts",
         "description": "prompts.system_prompts",
@@ -1797,6 +1992,22 @@
         "description": "prompts.system_prompts",
         "isExtraImport": true,
         "detail": "prompts.system_prompts",
+        "documentation": {}
+    },
+    {
+        "label": "SystemPrompts",
+        "importPath": "prompts.system_prompts",
+        "description": "prompts.system_prompts",
+        "isExtraImport": true,
+        "detail": "prompts.system_prompts",
+        "documentation": {}
+    },
+    {
+        "label": "ContextManager",
+        "importPath": "tools.contextmanager",
+        "description": "tools.contextmanager",
+        "isExtraImport": true,
+        "detail": "tools.contextmanager",
         "documentation": {}
     },
     {
@@ -2860,6 +3071,87 @@
         "documentation": {}
     },
     {
+        "label": "bin_dir",
+        "kind": 5,
+        "importPath": ".venv.bin.activate_this",
+        "description": ".venv.bin.activate_this",
+        "peekOfCode": "bin_dir = os.path.dirname(abs_file)\nbase = bin_dir[: -len(\"bin\") - 1]  # strip away the bin part from the __file__, plus the path separator\n# prepend bin to PATH (this file is inside the bin directory)\nos.environ[\"PATH\"] = os.pathsep.join([bin_dir, *os.environ.get(\"PATH\", \"\").split(os.pathsep)])\nos.environ[\"VIRTUAL_ENV\"] = base  # virtual env is right above bin directory\nos.environ[\"VIRTUAL_ENV_PROMPT\"] = \"claude-engineer\" or os.path.basename(base)  # noqa: SIM222\n# add the virtual environments libraries to the host python import mechanism\nprev_length = len(sys.path)\nfor lib in \"../lib/python3.11/site-packages\".split(os.pathsep):\n    path = os.path.realpath(os.path.join(bin_dir, lib))",
+        "detail": ".venv.bin.activate_this",
+        "documentation": {}
+    },
+    {
+        "label": "base",
+        "kind": 5,
+        "importPath": ".venv.bin.activate_this",
+        "description": ".venv.bin.activate_this",
+        "peekOfCode": "base = bin_dir[: -len(\"bin\") - 1]  # strip away the bin part from the __file__, plus the path separator\n# prepend bin to PATH (this file is inside the bin directory)\nos.environ[\"PATH\"] = os.pathsep.join([bin_dir, *os.environ.get(\"PATH\", \"\").split(os.pathsep)])\nos.environ[\"VIRTUAL_ENV\"] = base  # virtual env is right above bin directory\nos.environ[\"VIRTUAL_ENV_PROMPT\"] = \"claude-engineer\" or os.path.basename(base)  # noqa: SIM222\n# add the virtual environments libraries to the host python import mechanism\nprev_length = len(sys.path)\nfor lib in \"../lib/python3.11/site-packages\".split(os.pathsep):\n    path = os.path.realpath(os.path.join(bin_dir, lib))\n    site.addsitedir(path)",
+        "detail": ".venv.bin.activate_this",
+        "documentation": {}
+    },
+    {
+        "label": "os.environ[\"PATH\"]",
+        "kind": 5,
+        "importPath": ".venv.bin.activate_this",
+        "description": ".venv.bin.activate_this",
+        "peekOfCode": "os.environ[\"PATH\"] = os.pathsep.join([bin_dir, *os.environ.get(\"PATH\", \"\").split(os.pathsep)])\nos.environ[\"VIRTUAL_ENV\"] = base  # virtual env is right above bin directory\nos.environ[\"VIRTUAL_ENV_PROMPT\"] = \"claude-engineer\" or os.path.basename(base)  # noqa: SIM222\n# add the virtual environments libraries to the host python import mechanism\nprev_length = len(sys.path)\nfor lib in \"../lib/python3.11/site-packages\".split(os.pathsep):\n    path = os.path.realpath(os.path.join(bin_dir, lib))\n    site.addsitedir(path)\nsys.path[:] = sys.path[prev_length:] + sys.path[0:prev_length]\nsys.real_prefix = sys.prefix",
+        "detail": ".venv.bin.activate_this",
+        "documentation": {}
+    },
+    {
+        "label": "os.environ[\"VIRTUAL_ENV\"]",
+        "kind": 5,
+        "importPath": ".venv.bin.activate_this",
+        "description": ".venv.bin.activate_this",
+        "peekOfCode": "os.environ[\"VIRTUAL_ENV\"] = base  # virtual env is right above bin directory\nos.environ[\"VIRTUAL_ENV_PROMPT\"] = \"claude-engineer\" or os.path.basename(base)  # noqa: SIM222\n# add the virtual environments libraries to the host python import mechanism\nprev_length = len(sys.path)\nfor lib in \"../lib/python3.11/site-packages\".split(os.pathsep):\n    path = os.path.realpath(os.path.join(bin_dir, lib))\n    site.addsitedir(path)\nsys.path[:] = sys.path[prev_length:] + sys.path[0:prev_length]\nsys.real_prefix = sys.prefix\nsys.prefix = base",
+        "detail": ".venv.bin.activate_this",
+        "documentation": {}
+    },
+    {
+        "label": "os.environ[\"VIRTUAL_ENV_PROMPT\"]",
+        "kind": 5,
+        "importPath": ".venv.bin.activate_this",
+        "description": ".venv.bin.activate_this",
+        "peekOfCode": "os.environ[\"VIRTUAL_ENV_PROMPT\"] = \"claude-engineer\" or os.path.basename(base)  # noqa: SIM222\n# add the virtual environments libraries to the host python import mechanism\nprev_length = len(sys.path)\nfor lib in \"../lib/python3.11/site-packages\".split(os.pathsep):\n    path = os.path.realpath(os.path.join(bin_dir, lib))\n    site.addsitedir(path)\nsys.path[:] = sys.path[prev_length:] + sys.path[0:prev_length]\nsys.real_prefix = sys.prefix\nsys.prefix = base",
+        "detail": ".venv.bin.activate_this",
+        "documentation": {}
+    },
+    {
+        "label": "prev_length",
+        "kind": 5,
+        "importPath": ".venv.bin.activate_this",
+        "description": ".venv.bin.activate_this",
+        "peekOfCode": "prev_length = len(sys.path)\nfor lib in \"../lib/python3.11/site-packages\".split(os.pathsep):\n    path = os.path.realpath(os.path.join(bin_dir, lib))\n    site.addsitedir(path)\nsys.path[:] = sys.path[prev_length:] + sys.path[0:prev_length]\nsys.real_prefix = sys.prefix\nsys.prefix = base",
+        "detail": ".venv.bin.activate_this",
+        "documentation": {}
+    },
+    {
+        "label": "sys.path[:]",
+        "kind": 5,
+        "importPath": ".venv.bin.activate_this",
+        "description": ".venv.bin.activate_this",
+        "peekOfCode": "sys.path[:] = sys.path[prev_length:] + sys.path[0:prev_length]\nsys.real_prefix = sys.prefix\nsys.prefix = base",
+        "detail": ".venv.bin.activate_this",
+        "documentation": {}
+    },
+    {
+        "label": "sys.real_prefix",
+        "kind": 5,
+        "importPath": ".venv.bin.activate_this",
+        "description": ".venv.bin.activate_this",
+        "peekOfCode": "sys.real_prefix = sys.prefix\nsys.prefix = base",
+        "detail": ".venv.bin.activate_this",
+        "documentation": {}
+    },
+    {
+        "label": "sys.prefix",
+        "kind": 5,
+        "importPath": ".venv.bin.activate_this",
+        "description": ".venv.bin.activate_this",
+        "peekOfCode": "sys.prefix = base",
+        "detail": ".venv.bin.activate_this",
+        "documentation": {}
+    },
+    {
         "label": "is_installed",
         "kind": 2,
         "importPath": "Claude-Eng-v2.main",
@@ -3832,6 +4124,15 @@
         "documentation": {}
     },
     {
+        "label": "LiveKitContextTool",
+        "kind": 6,
+        "importPath": "tools.livekitcontexttool",
+        "description": "tools.livekitcontexttool",
+        "peekOfCode": "class LiveKitContextTool(BaseTool):\n    \"\"\"\n    A tool for managing LiveKit room context and real-time communication.\n    Features:\n    - Manages LiveKit room connections\n    - Stores and retrieves conversation context\n    - Handles message storage and synchronization\n    - Supports real-time data publishing\n    Parameters:\n        conversation_id (str, optional): ID for the conversation context",
+        "detail": "tools.livekitcontexttool",
+        "documentation": {}
+    },
+    {
         "label": "ScreenshotTool",
         "kind": 6,
         "importPath": "tools.screenshottool",
@@ -3886,6 +4187,15 @@
         "documentation": {}
     },
     {
+        "label": "CustomJSONEncoder",
+        "kind": 6,
+        "importPath": "app",
+        "description": "app",
+        "peekOfCode": "class CustomJSONEncoder(JSONEncoder):\n    def default(self, obj):\n        try:\n            # Convert TextBlock objects to their string representation\n            if hasattr(obj, 'text'):\n                return str(obj.text)\n            if hasattr(obj, '__dict__'):\n                return obj.__dict__\n            return str(obj)\n        except Exception:",
+        "detail": "app",
+        "documentation": {}
+    },
+    {
         "label": "home",
         "kind": 2,
         "importPath": "app",
@@ -3926,7 +4236,16 @@
         "kind": 5,
         "importPath": "app",
         "description": "app",
-        "peekOfCode": "app = Flask(__name__, static_folder='static')\napp.config['UPLOAD_FOLDER'] = 'uploads'\napp.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size\n# Ensure upload directory exists\nos.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)\n# Initialize the assistant\nassistant = Assistant()\n@app.route('/')\ndef home():\n    return render_template('index.html')",
+        "peekOfCode": "app = Flask(__name__, static_folder='static')\napp.json_encoder = CustomJSONEncoder\napp.config['UPLOAD_FOLDER'] = 'uploads'\napp.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size\n# Ensure upload directory exists\nos.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)\n# Initialize the assistant\nassistant = Assistant()\n@app.route('/')\ndef home():",
+        "detail": "app",
+        "documentation": {}
+    },
+    {
+        "label": "app.json_encoder",
+        "kind": 5,
+        "importPath": "app",
+        "description": "app",
+        "peekOfCode": "app.json_encoder = CustomJSONEncoder\napp.config['UPLOAD_FOLDER'] = 'uploads'\napp.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size\n# Ensure upload directory exists\nos.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)\n# Initialize the assistant\nassistant = Assistant()\n@app.route('/')\ndef home():\n    return render_template('index.html')",
         "detail": "app",
         "documentation": {}
     },
@@ -3955,6 +4274,24 @@
         "description": "app",
         "peekOfCode": "assistant = Assistant()\n@app.route('/')\ndef home():\n    return render_template('index.html')\n@app.route('/chat', methods=['POST'])\ndef chat():\n    data = request.json\n    message = data.get('message', '')\n    image_data = data.get('image')  # Get the base64 image data\n    # Get media type from request or extract from data URL",
         "detail": "app",
+        "documentation": {}
+    },
+    {
+        "label": "Assistant",
+        "kind": 6,
+        "importPath": "ce3 copy",
+        "description": "ce3 copy",
+        "peekOfCode": "class Assistant:\n    \"\"\"\n    The Assistant class manages:\n    - Loading of tools from a specified directory.\n    - Interaction with the Anthropics API (message completion).\n    - Handling user commands such as 'refresh' and 'reset'.\n    - Token usage tracking and display.\n    - Tool execution upon request from model responses.\n    \"\"\"\n    def __init__(self):",
+        "detail": "ce3 copy",
+        "documentation": {}
+    },
+    {
+        "label": "SPINNER_CLEANUP_TIMEOUT",
+        "kind": 5,
+        "importPath": "ce3 copy",
+        "description": "ce3 copy",
+        "peekOfCode": "SPINNER_CLEANUP_TIMEOUT = getattr(Config, 'SPINNER_CLEANUP_TIMEOUT', 2.0)\nfrom prompts.system_prompts import SystemPrompts\nfrom tools.base import BaseTool\nfrom tools.contextmanager import ContextManager\n# Configure logging to only show ERROR level and above\nlogging.basicConfig(\n    level=logging.ERROR,\n    format='%(levelname)s: %(message)s'\n)\nclass Assistant:",
+        "detail": "ce3 copy",
         "documentation": {}
     },
     {

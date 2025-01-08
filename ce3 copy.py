@@ -7,7 +7,6 @@ import os
 import pkgutil
 import platform
 import sys
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
 import anthropic
@@ -43,56 +42,6 @@ class Assistant:
     - Token usage tracking and display.
     - Tool execution upon request from model responses.
     """
-
-    def __init__(self):
-        if not getattr(Config, 'ANTHROPIC_API_KEY', None):
-            raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
-
-        # Initialize Anthropics async client for proper async support
-        self.client = anthropic.AsyncAnthropic(api_key=Config.ANTHROPIC_API_KEY)
-
-        self.conversation_history: List[Dict[str, Any]] = []
-        self.console = Console()
-
-        self.thinking_enabled = getattr(Config, 'ENABLE_THINKING', False)
-        self.temperature = getattr(Config, 'DEFAULT_TEMPERATURE', 0.7)
-        self.total_tokens_used = 0
-
-        # Initialize context manager
-        self.context_manager = ContextManager()
-        
-        self.tools = self._load_tools()
-
-        # Create logs directory if it doesn't exist
-        self.logs_dir = "logs"
-        os.makedirs(self.logs_dir, exist_ok=True)
-
-    def _log_message(self, role: str, content: Any):
-        """Log message to a file with timestamp"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        log_file = os.path.join(self.logs_dir, f"conversation_{datetime.now().strftime('%Y%m%d')}.log")
-        
-        try:
-            with open(log_file, 'a', encoding='utf-8') as f:
-                # Format the content based on its type
-                if isinstance(content, list):
-                    # Handle list of content blocks
-                    formatted_content = ""
-                    for item in content:
-                        if isinstance(item, dict):
-                            if item.get('type') == 'text':
-                                formatted_content += item.get('text', '') + '\n'
-                            elif item.get('type') == 'tool_use':
-                                formatted_content += f"[Tool Use: {item.get('name')}]\n"
-                        else:
-                            formatted_content += str(item) + '\n'
-                else:
-                    formatted_content = str(content)
-                
-                # Write the formatted log entry
-                f.write(f"[{timestamp}] {role}: {formatted_content.strip()}\n\n")
-        except Exception as e:
-            logging.error(f"Error writing to log file: {str(e)}")
 
     def __init__(self):
         if not getattr(Config, 'ANTHROPIC_API_KEY', None):
@@ -606,7 +555,6 @@ class Assistant:
             except asyncio.CancelledError:
                 pass
 
-
     async def chat(self, user_input: Union[str, List[Any]]) -> str:
         """
         Process a chat message from the user.
@@ -655,13 +603,9 @@ class Assistant:
                             text = str(item.text) if item.text else ""
                             if text.strip():  # Only add non-empty text
                                 serialized_input.append({"type": "text", "text": text})
-                        elif hasattr(item, '__dict__'):  # Handle custom objects
-                            # Convert object attributes to dict and ensure JSON serializable
-                            obj_dict = {k: str(v) for k, v in item.__dict__.items()}
-                            serialized_input.append({"type": "text", "text": str(obj_dict)})
                         elif isinstance(item, dict):
-                            # Ensure the dict is JSON serializable by converting all values to strings
-                            serialized_dict = {k: str(v) for k, v in item.items()}
+                            # Ensure the dict is JSON serializable
+                            serialized_dict = json.loads(json.dumps(item))
                             serialized_input.append(serialized_dict)
                         else:
                             # Convert any other type to string representation
@@ -686,21 +630,26 @@ class Assistant:
                 "content": serialized_input
             })
 
-            # Log user message
-            self._log_message("user", serialized_input)
-
             # Show thinking indicator if enabled
             if self.thinking_enabled:
+                # Create and start the spinner task as a background process
                 spinner_task = asyncio.create_task(self._show_thinking_spinner())
                 try:
+                    # Ensure proper awaiting of completion
                     response = await self._get_completion()
                 finally:
+                    # Always ensure proper cleanup of the spinner task
+                    # We cancel the task and wait for it to complete with a configurable timeout
+                    # to prevent potential hangs during cleanup
                     spinner_task.cancel()
                     try:
+                        # Wait for task cleanup with configured timeout
                         await asyncio.wait_for(spinner_task, timeout=SPINNER_CLEANUP_TIMEOUT)
                     except asyncio.CancelledError:
+                        # Expected cancellation, task cleaned up successfully
                         pass
                     except asyncio.TimeoutError:
+                        # Log detailed system info with timeout
                         mem = psutil.virtual_memory()
                         cpu_percent = psutil.cpu_percent(interval=0.1)
                         logging.warning(
@@ -709,12 +658,10 @@ class Assistant:
                             f"Platform: {platform.system()} {platform.release()}"
                         )
                     except Exception as e:
+                        # Log unexpected errors during task cleanup with stack trace
                         logging.error(f"Error cleaning up spinner task: {str(e)}", exc_info=True)
             else:
                 response = await self._get_completion()
-
-            # Log assistant response
-            self._log_message("assistant", response)
 
             # Capture context after successful response
             await self._capture_conversation_context()
