@@ -94,25 +94,6 @@ class Assistant:
         except Exception as e:
             logging.error(f"Error writing to log file: {str(e)}")
 
-    def __init__(self):
-        if not getattr(Config, 'ANTHROPIC_API_KEY', None):
-            raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
-
-        # Initialize Anthropics async client for proper async support
-        self.client = anthropic.AsyncAnthropic(api_key=Config.ANTHROPIC_API_KEY)
-
-        self.conversation_history: List[Dict[str, Any]] = []
-        self.console = Console()
-
-        self.thinking_enabled = getattr(Config, 'ENABLE_THINKING', False)
-        self.temperature = getattr(Config, 'DEFAULT_TEMPERATURE', 0.7)
-        self.total_tokens_used = 0
-
-        # Initialize context manager
-        self.context_manager = ContextManager()
-        
-        self.tools = self._load_tools()
-
     def _execute_uv_install(self, package_name: str) -> bool:
         """
         Execute the uvpackagemanager tool directly to install the missing package.
