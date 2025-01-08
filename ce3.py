@@ -260,7 +260,7 @@ class Assistant:
         
         # Format tool info with cyan emojis and proper indentation
         tool_info = f"""[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input.get('text', cleaned_input), indent=2)}
-[cyan]📤 Result:[/cyan] {cleaned_result.get('text', cleaned_result)}
+[cyan]📤 Result:[/cyan] {cleaned_result.get('text', cleaned_result)}"""
 
         panel = Panel(
             tool_info,
@@ -327,10 +327,11 @@ class Assistant:
             return "[base64 data omitted]"
         return data
 
-    def _execute_tool(self, tool_use):
+    async def _execute_tool(self, tool_use):
         """
         Given a tool usage request (with tool name and inputs),
         dynamically load and execute the corresponding tool.
+        Handles both async and sync tool execution with proper timeout handling.
         """
         tool_name = tool_use.name
         tool_input = tool_use.input or {}
@@ -341,20 +342,46 @@ class Assistant:
             tool_instance = self._find_tool_instance_in_module(module, tool_name)
 
             if not tool_instance:
-                tool_result = f"Tool not found: {tool_name}"
+                tool_result = {"type": "text", "text": f"Tool not found: {tool_name}"}
             else:
-                # Execute the tool with the provided input
+                # Execute the tool with the provided input and timeout handling
                 try:
-                    result = tool_instance.execute(**tool_input)
+                    execute_method = getattr(tool_instance, 'execute')
+                    
+                    # Check if the execute method is async
+                    if asyncio.iscoroutinefunction(execute_method):
+                        try:
+                            result = await asyncio.wait_for(
+                                execute_method(**tool_input),
+                                timeout=30.0  # 30 second timeout
+                            )
+                        except asyncio.TimeoutError:
+                            logging.error(f"Tool execution timed out: {tool_name}")
+                            return {"type": "text", "text": f"Error: Tool execution timed out after 30 seconds"}
+                    else:
+                        # For non-async tools, wrap in lambda to handle kwargs properly
+                        loop = asyncio.get_event_loop()
+                        try:
+                            result = await asyncio.wait_for(
+                                loop.run_in_executor(
+                                    None,
+                                    lambda: execute_method(**tool_input)
+                                ),
+                                timeout=30.0
+                            )
+                        except asyncio.TimeoutError:
+                            logging.error(f"Tool execution timed out: {tool_name}")
+                            return {"type": "text", "text": f"Error: Tool execution timed out after 30 seconds"}
+                    
                     # Ensure result is properly serialized
                     tool_result = self._serialize_chat_content(result)
                 except Exception as exec_err:
                     logging.error(f"Tool execution error: {str(exec_err)}", exc_info=True)
-                    tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
+                    tool_result = {"type": "text", "text": f"Error executing tool '{tool_name}': {str(exec_err)}"}
         except ImportError:
-            tool_result = f"Failed to import tool: {tool_name}"
+            tool_result = {"type": "text", "text": f"Failed to import tool: {tool_name}"}
         except Exception as e:
-            tool_result = f"Error executing tool: {str(e)}"
+            tool_result = {"type": "text", "text": f"Error executing tool: {str(e)}"}
 
         # Display tool usage with proper handling of structured data
         self._display_tool_usage(tool_name, tool_input, tool_result)
@@ -439,23 +466,20 @@ class Assistant:
                     for content_block in response.content:
                         if content_block.type == "tool_use":
                             # Execute tool and get result (display is handled within _execute_tool)
-                            result = self._execute_tool(content_block)
+                            result = await self._execute_tool(content_block)
                             
-                            # Convert result to serializable format
-                            def serialize_content(content):
-                                """Recursively serialize content, handling TextBlocks consistently"""
-                                return self._serialize_chat_content(content)
-
-                            serialized_result = serialize_content(result)
+                            # Result is already serialized by _execute_tool
+                            serialized_result = result
 
                             # Create the tool result with consistently formatted content
-                            tool_result = {
-                                "type": "tool_result",
-                                "tool_use_id": content_block.id,
-                                "content": [self._serialize_chat_content(serialized_result)]
-                            }
-
-                            tool_results.append(tool_result)
+                            serialized_content = result  # Already properly serialized
+                            if isinstance(serialized_content, dict) and 'text' in serialized_content:
+                                tool_result = {
+                                    "type": "tool_result",
+                                    "tool_use_id": content_block.id,
+                                    "content": [serialized_content]
+                                }
+                                tool_results.append(tool_result)
 
                     # First append the assistant's tool use request
                     self.conversation_history.append({
@@ -770,7 +794,8 @@ class Assistant:
             return f"Error: {str(e)}"
 
     async def reset(self):
-        """Reset the assistant's memory and token usage.
+        """
+        Reset the assistant's memory and token usage.
 
         Ensures proper cleanup of conversation context before resetting.
         This is an async operation because it needs to capture the final context

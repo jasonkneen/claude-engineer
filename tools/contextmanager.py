@@ -49,8 +49,10 @@ class ContextManager:
                     "content": Config.CONTEXT_SUMMARY_PROMPT.format(context=context)
                 }]
             )
-            if message and hasattr(message, 'content'):
-                return message.content[0].text
+            if message and hasattr(message, 'content') and message.content:
+                if isinstance(message.content[0], dict) and 'text' in message.content[0]:
+                    return message.content[0]['text']
+                return str(message.content[0])
             return ""
         except Exception as e:
             print(f"Error generating summary: {e}")

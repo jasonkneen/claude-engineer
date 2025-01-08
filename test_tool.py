@@ -12,7 +12,9 @@ async def main():
     console.print("\n[bold]Testing tool output styling...[/bold]")
     tool = FileContentReaderTool()
     result = tool.execute(file_paths=['test_tool.py'])
-    console.print(result["text"])
+    # Parse the result text as Rich markup
+    from rich.markup import render
+    console.print(render(result["text"]))
     
     # Test summary generation
     console.print("\n[bold]Testing summary generation...[/bold]")
