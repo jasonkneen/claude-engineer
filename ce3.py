@@ -543,8 +543,14 @@ class Assistant:
                     except Exception as e:
                         logging.error(f"Failed to serialize conversation history: {str(e)}")
                     
-                    # Return empty string to let the next natural API call handle the tool results
-                    return ""
+                    # Add tool result to conversation history
+                    self.conversation_history.append({
+                        "role": "assistant",
+                        "content": [tool_result]
+                    })
+                    
+                    # Return the tool result text to display to user
+                    return tool_result.get('content', [{"type": "text", "text": "No content"}])[0].get('text', '')
 
                 else:
                     self.console.print("[red]No tool content received despite 'tool_use' stop reason.[/red]")
