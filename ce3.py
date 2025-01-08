@@ -114,11 +114,12 @@ class Assistant:
             }
 
         result = self._execute_tool(ToolUseMock())
-        if "Error" not in result and "failed" not in result.lower():
+        result_text = result['text'] if isinstance(result, dict) and 'text' in result else str(result)
+        if "Error" not in result_text and "failed" not in result_text.lower():
             self.console.print("[green]The package was installed successfully.[/green]")
             return True
         else:
-            self.console.print(f"[red]Failed to install {package_name}. Output:[/red] {result}")
+            self.console.print(f"[red]Failed to install {package_name}. Output:[/red] {result_text}")
             return False
 
     def _load_tools(self) -> List[Dict[str, Any]]:
@@ -238,46 +239,29 @@ class Assistant:
         self.console.print(formatted_tools)
         self.console.print("\n---")
 
-    def _display_tool_usage(self, tool_name: str, input_data: Dict, result: str):
+    def _display_tool_usage(self, tool_name: str, input_data: Dict, result: Union[str, Dict[str, Any]]):
         """
         If SHOW_TOOL_USAGE is enabled, display the input and result of a tool execution.
-        Handles special cases like image data and large outputs for cleaner display.
+        Handles special cases like image data, large outputs, and serialized content for cleaner display.
+        
+        Args:
+            tool_name: Name of the tool being used
+            input_data: Dictionary of tool inputs
+            result: Tool execution result, either as string or serialized dict
         """
         if not getattr(Config, 'SHOW_TOOL_USAGE', False):
             return
 
-        # Clean up input data by removing any large binary/base64 content
+        # Clean up and serialize input data
         cleaned_input = self._clean_data_for_display(input_data)
         
-        # Clean up result data
+        # Clean up and serialize result data, preserving formatting
         cleaned_result = self._clean_data_for_display(result)
+        
+        # Format tool info with cyan emojis and proper indentation
+        tool_info = f"""[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input.get('text', cleaned_input), indent=2)}
+[cyan]📤 Result:[/cyan] {cleaned_result.get('text', cleaned_result)}
 
-        # Format and highlight input as JSON
-        formatted_input = json.dumps(cleaned_input, indent=1)
-        input_syntax = Syntax(formatted_input, "json", theme="monokai", line_numbers=False)
-        
-        # Format and highlight result based on content type
-        result_str = str(cleaned_result)
-        if result_str.startswith('```python'):
-            # Already formatted as code block, extract content
-            code = result_str.replace('```python\n', '').replace('\n```', '')
-            result_syntax = Syntax(code, "python", theme="monokai", line_numbers=False)
-        else:
-            # Treat as plain text or auto-detect language
-            result_syntax = Syntax(result_str, "text", theme="monokai", line_numbers=False)
-        
-        # Create headers with emojis
-        input_header = Text("📥 Input:", style="cyan")
-        result_header = Text("📤 Result:", style="cyan")
-        
-        # Combine components using Group
-        tool_info = Group(
-            input_header,
-            input_syntax,
-            result_header,
-            result_syntax
-        )
-        
         panel = Panel(
             tool_info,
             title=f"Tool used: {tool_name}",
@@ -288,24 +272,37 @@ class Assistant:
         self.console.print(panel)
 
     def _clean_data_for_display(self, data):
+        """Clean data for display.
+        
+        A helper method that handles various data types and removes/replaces
+        large content like base64 strings. Uses _serialize_chat_content for
+        consistent serialization.
         """
-        Helper method to clean data for display by handling various data types
-        and removing/replacing large content like base64 strings.
-        """
+        # If already properly serialized, just handle base64 content
+        if isinstance(data, dict) and 'type' in data and 'text' in data:
+            text = data['text']
+            if isinstance(text, str) and len(text) > 1000 and ';base64,' in text:
+                return {"type": "text", "text": "[base64 data omitted]"}
+            return data
+            
+        # Otherwise serialize the content consistently
+        serialized = self._serialize_chat_content(data)
+        
+        # Fallback to original cleaning method if serialization fails
         if isinstance(data, str):
             try:
-                # Try to parse as JSON first
                 parsed_data = json.loads(data)
-                return self._clean_parsed_data(parsed_data)
+                cleaned = self._clean_parsed_data(parsed_data)
+                return {"type": "text", "text": str(cleaned)}
             except json.JSONDecodeError:
-                # If it's a long string, check for base64 patterns
                 if len(data) > 1000 and ';base64,' in data:
-                    return "[base64 data omitted]"
-                return data
+                    return {"type": "text", "text": "[base64 data omitted]"}
+                return {"type": "text", "text": data}
         elif isinstance(data, dict):
-            return self._clean_parsed_data(data)
+            cleaned = self._clean_parsed_data(data)
+            return {"type": "text", "text": str(cleaned)}
         else:
-            return str(data)
+            return {"type": "text", "text": str(data)}
 
     def _clean_parsed_data(self, data):
         """
@@ -349,8 +346,8 @@ class Assistant:
                 # Execute the tool with the provided input
                 try:
                     result = tool_instance.execute(**tool_input)
-                    # Keep structured data intact
-                    tool_result = result
+                    # Ensure result is properly serialized
+                    tool_result = self._serialize_chat_content(result)
                 except Exception as exec_err:
                     logging.error(f"Tool execution error: {str(exec_err)}", exc_info=True)
                     tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
@@ -585,10 +582,37 @@ class Assistant:
         if isinstance(content, dict) and 'type' in content and 'text' in content:
             return content
             
-        # Handle TextBlock or Rich-renderable objects
-        if hasattr(content, 'text') or hasattr(content, '__rich__'):
-            text = str(content.text) if hasattr(content, 'text') else str(content)
-            return {"type": "text", "text": text.strip()}
+        # Handle dictionaries first to prevent attribute access errors
+        if isinstance(content, dict):
+            if 'type' in content and 'text' in content:
+                return content
+            try:
+                return {"type": "text", "text": json.dumps(content, indent=2)}
+            except (TypeError, json.JSONDecodeError):
+                return {"type": "text", "text": str(content)}
+
+        # Handle rich text objects and objects with text attribute
+        if hasattr(content, '__rich__') or hasattr(content, 'text'):
+            try:
+                # Try text attribute first for TextBlock objects
+                if hasattr(content, 'text'):
+                    text = str(content.text).strip()
+                    if text:
+                        return {"type": "text", "text": text}
+                
+                # Try rich console for other rich objects
+                from rich.console import Console
+                console = Console(record=True)
+                console.print(content)
+                rendered = console.export_text().strip()
+                if rendered:
+                    return {"type": "text", "text": rendered}
+                
+                # Final fallback to string representation
+                return {"type": "text", "text": str(content)}
+            except Exception:
+                # Final fallback
+                return {"type": "text", "text": str(content)}
             
         # Handle lists by recursively serializing items
         if isinstance(content, (list, tuple)):
@@ -714,34 +738,52 @@ class Assistant:
             else:
                 response = await self._get_completion()
 
+            # Ensure response is properly serialized
+            if isinstance(response, str):
+                serialized_response = self._serialize_chat_content(response)
+            else:
+                serialized_response = response  # Already serialized by _get_completion
+                
             # Log assistant response
-            self._log_message("assistant", response)
+            self._log_message("assistant", serialized_response)
+
+            # Ensure response is properly serialized for conversation history
+            if isinstance(serialized_response, dict) and 'type' in serialized_response and 'text' in serialized_response:
+                history_content = [serialized_response]
+            else:
+                # If somehow not properly serialized, create a proper format
+                history_content = [{"type": "text", "text": str(serialized_response)}]
+            
+            # Add to conversation history
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": history_content
+            })
 
             # Capture context after successful response
             await self._capture_conversation_context()
             
-            return response
+            return serialized_response.get('text', str(response))
 
         except Exception as e:
             logging.error(f"Error in chat: {str(e)}")
             return f"Error: {str(e)}"
 
     async def reset(self):
-        """
-        Reset the assistant's memory and token usage.
+        """Reset the assistant's memory and token usage.
+
         Ensures proper cleanup of conversation context before resetting.
-        
         This is an async operation because it needs to capture the final context
         before clearing the conversation history.
-        
+
         The reset operation includes:
         1. Capturing final context if there's conversation history
         2. Clearing conversation history
         3. Resetting token usage counter
-        
+
         Returns:
             None
-            
+
         Raises:
             asyncio.TimeoutError: If context capture times out
             Exception: For other errors during reset

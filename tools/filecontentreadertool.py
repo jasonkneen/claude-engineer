@@ -118,7 +118,11 @@ class FileContentReaderTool(BaseTool):
         return results
 
     def execute(self, **kwargs) -> Dict[str, Any]:
-        """Read file contents and return them as properly formatted code blocks."""
+        """Read file contents and return them as properly formatted code blocks with proper styling."""
+        from rich import box
+        from rich.panel import Panel
+        import json
+
         file_paths = kwargs.get('file_paths', [])
         
         def detect_language(path: str) -> str:
@@ -135,51 +139,88 @@ class FileContentReaderTool(BaseTool):
                 'sh': 'bash',
             }.get(ext, 'text')
 
-        def format_content(path: str, content: str) -> Dict[str, Any]:
+        def format_content(path: str, content: str) -> str:
             """Format content as a code block with detected language."""
             lang = detect_language(path)
-            return {
-                "type": "text",
-                "text": f"```{lang}\n{content}\n```"
-            }
+            return f"```{lang}\n{content}\n```"
 
         try:
             if not file_paths:
                 return {"type": "text", "text": "Error: No file paths provided"}
+                
+            # Convert relative paths to absolute paths
+            def make_absolute(path):
+                if not os.path.isabs(path):
+                    return os.path.abspath(os.path.join(os.getcwd(), path))
+                return path
 
             # For single file, return formatted content directly
             if len(file_paths) == 1:
-                path = file_paths[0]
+                path = make_absolute(file_paths[0])
                 if os.path.isdir(path):
                     dir_results = self._read_directory(path)
                     formatted = "\n\n".join(
-                        f"File: {p}\n{format_content(p, c)['text']}" 
+                        f"File: {p}\n{format_content(p, c)}" 
                         for p, c in dir_results.items()
                     )
                     return {"type": "text", "text": formatted}
                 else:
                     content = self._read_file(path)
-                    return format_content(path, content)
+                    formatted = format_content(path, content)
+                    return {"type": "text", "text": formatted}
 
             # For multiple files, return formatted content for each
             results = {}
             for path in file_paths:
-                if os.path.isdir(path):
-                    dir_results = self._read_directory(path)
+                abs_path = make_absolute(path)
+                if os.path.isdir(abs_path):
+                    dir_results = self._read_directory(abs_path)
                     results.update(dir_results)
                 else:
-                    content = self._read_file(path)
-                    results[path] = content
+                    content = self._read_file(abs_path)
+                    results[abs_path] = content
 
             # Format each file's content with proper code blocks
             formatted_files = []
             for path, content in results.items():
-                formatted_content = format_content(path, content)
-                formatted_files.append(f"File: {path}\n{formatted_content['text']}")
+                formatted = format_content(path, content)
+                formatted_files.append(f"File: {path}\n{formatted}")
             
             # Join all formatted files with proper spacing
-            formatted = "\n\n".join(formatted_files)
-            return {"type": "text", "text": formatted}
+            from rich.console import Console
+            from io import StringIO
+
+            # Format with proper styling
+            cleaned_input = file_paths
+            cleaned_result = "\n\n".join(formatted_files)
+            
+            # Format with proper styling
+            from rich.syntax import Syntax
+            from rich.console import Group
+
+            # Create syntax-highlighted code block
+            code = Syntax(cleaned_result, "python", theme="monokai", line_numbers=True)
+            
+            # Create input section
+            input_section = f"[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input, indent=2)}"
+            
+            # Group the components
+            content = Group(
+                input_section,
+                "[cyan]📤 Result:[/cyan]",
+                code
+            )
+
+            # Create panel with proper styling
+            panel = Panel(
+                content,
+                title="Tool used: FileContentReader",
+                title_align="left",
+                border_style="cyan",
+                padding=(0, 1)
+            )
+            
+            return {"type": "text", "text": str(panel)}
 
         except Exception as e:
             return {"type": "text", "text": f"Error: {str(e)}"}

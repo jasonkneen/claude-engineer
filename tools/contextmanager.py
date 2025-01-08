@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from anthropic import AsyncAnthropic
+from anthropic import AsyncAnthropic, HUMAN_PROMPT, AI_PROMPT
 
 from config import Config
 
@@ -40,8 +40,8 @@ class ContextManager:
     async def generate_summary(self, context: str) -> str:
         """Generates an AI summary of the context using Claude."""
         try:
-            response = await self.client.messages.create(
-                model=Config.MODEL,
+            message = await self.client.messages.create(
+                model="claude-3-opus-20240229",
                 max_tokens=Config.CONTEXT_SUMMARY_MAX_TOKENS,
                 temperature=Config.CONTEXT_SUMMARY_TEMPERATURE,
                 messages=[{
@@ -49,12 +49,8 @@ class ContextManager:
                     "content": Config.CONTEXT_SUMMARY_PROMPT.format(context=context)
                 }]
             )
-            # Handle the response content properly
-            if response and hasattr(response, 'content') and response.content:
-                # Extract text from the first content block
-                content = response.content[0]
-                if hasattr(content, 'text'):
-                    return content.text
+            if message and hasattr(message, 'content'):
+                return message.content[0].text
             return ""
         except Exception as e:
             print(f"Error generating summary: {e}")
