@@ -13,8 +13,8 @@ class CustomJSONEncoder(JSONEncoder):
     def default(self, obj):
         try:
             # Convert TextBlock objects to their string representation
-            if hasattr(obj, 'text'):
-                return str(obj.text)
+            if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
+                return str(obj.text) if hasattr(obj, 'text') else str(obj)
             if hasattr(obj, '__dict__'):
                 return obj.__dict__
             return str(obj)

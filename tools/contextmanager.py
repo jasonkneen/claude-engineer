@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic, HUMAN_PROMPT, AI_PROMPT
 
 from config import Config
 
@@ -16,7 +16,7 @@ class ContextManager:
     def __init__(self):
         self.context_dir = Config.CONTEXT_DIR
         self.archive_dir = Config.CONTEXT_ARCHIVE_DIR
-        self.client = Anthropic(api_key=Config.ANTHROPIC_API_KEY)
+        self.client = AsyncAnthropic(api_key=Config.ANTHROPIC_API_KEY)
         self._ensure_directories()
         
     def _ensure_directories(self):
@@ -41,7 +41,7 @@ class ContextManager:
         """Generates an AI summary of the context using Claude."""
         try:
             message = await self.client.messages.create(
-                model=Config.MODEL,
+                model="claude-3-opus-20240229",
                 max_tokens=Config.CONTEXT_SUMMARY_MAX_TOKENS,
                 temperature=Config.CONTEXT_SUMMARY_TEMPERATURE,
                 messages=[{
@@ -49,10 +49,14 @@ class ContextManager:
                     "content": Config.CONTEXT_SUMMARY_PROMPT.format(context=context)
                 }]
             )
-            return message.content
+            if message and hasattr(message, 'content') and message.content:
+                if isinstance(message.content[0], dict) and 'text' in message.content[0]:
+                    return message.content[0]['text']
+                return str(message.content[0])
+            return ""
         except Exception as e:
             print(f"Error generating summary: {e}")
-            return None
+            return ""
 
     def cleanup_old_contexts(self) -> None:
         """Archives old context entries when threshold is reached."""
@@ -80,7 +84,7 @@ class ContextManager:
         """
         # Check if context meets minimum size requirement
         if len(context_data) < Config.MIN_CONTEXT_SIZE_FOR_SUMMARY:
-            return None
+            return {}
             
         timestamp = datetime.utcnow().isoformat()
         
