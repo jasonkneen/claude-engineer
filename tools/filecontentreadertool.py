@@ -2,6 +2,7 @@ from tools.base import BaseTool
 from typing import Dict, Any, Union
 import os
 import json
+import logging
 import mimetypes
 
 class FileContentReaderTool(BaseTool):
@@ -13,6 +14,41 @@ class FileContentReaderTool(BaseTool):
     Handles file reading errors gracefully with built-in Python exceptions.
     When given a directory, recursively reads all text files while skipping binaries and common ignore patterns.
     '''
+    def ensure_serializable(self, obj):
+        """Ensure all objects are JSON serializable, with special handling for TextBlock and Rich objects."""
+        # Handle TextBlock objects (from prompt_toolkit)
+        if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
+            return str(obj.text) if hasattr(obj, 'text') else str(obj)
+        
+        # Handle Rich objects
+        if hasattr(obj, '__rich__'):
+            from rich.console import Console
+            console = Console(record=True, force_terminal=True)
+            console.print(obj)
+            return console.export_text(styles=True).strip()
+        
+        # Handle dictionaries recursively
+        if isinstance(obj, dict):
+            return {k: self.ensure_serializable(v) for k, v in obj.items()}
+        
+        # Handle lists and tuples recursively
+        if isinstance(obj, (list, tuple)):
+            return [self.ensure_serializable(item) for item in obj]
+        
+        # Handle objects with text attribute
+        if hasattr(obj, 'text'):
+            return str(obj.text)
+        
+        # Handle objects with plain attribute
+        if hasattr(obj, 'plain'):
+            return str(obj.plain)
+        
+        # Test if object is JSON serializable
+        try:
+            json.dumps(obj)
+            return obj
+        except (TypeError, ValueError):
+            return str(obj)
     
     # Files and directories to ignore
     IGNORE_PATTERNS = {
@@ -119,20 +155,32 @@ class FileContentReaderTool(BaseTool):
 
     def execute(self, **kwargs) -> Dict[str, Any]:
         """Read file contents and return them as properly formatted code blocks with proper styling."""
+        # Convert TextBlock objects immediately at the start
+        def convert_textblock(obj):
+            """Convert TextBlock objects to strings immediately."""
+            try:
+                if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
+                    return str(obj.text) if hasattr(obj, 'text') else str(obj)
+                return obj
+            except Exception as e:
+                logging.error(f"Error converting TextBlock: {str(e)}")
+                return str(obj)
+
+        # Convert any input kwargs that might contain TextBlock objects
+        try:
+            kwargs = {k: convert_textblock(v) for k, v in kwargs.items()}
+        except Exception as e:
+            logging.error(f"Error converting kwargs: {str(e)}")
+            kwargs = {k: str(v) for k, v in kwargs.items()}
+        
+        # Import Rich components after TextBlock conversion
         from rich import box
         from rich.panel import Panel
         from rich.console import Console
+        from rich.text import Text
+        from rich.syntax import Syntax
         import json
 
-        def ensure_serializable(obj):
-            """Convert TextBlock objects to strings."""
-            if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
-                return str(obj.text) if hasattr(obj, 'text') else str(obj)
-            elif isinstance(obj, dict):
-                return {k: ensure_serializable(v) for k, v in obj.items()}
-            elif isinstance(obj, (list, tuple)):
-                return [ensure_serializable(item) for item in obj]
-            return obj
 
         file_paths = kwargs.get('file_paths', [])
         
@@ -227,10 +275,16 @@ class FileContentReaderTool(BaseTool):
             result_header = console.export_text().strip()
             console.clear()
             
-            # Create and render syntax-highlighted code block
-            code = Syntax(cleaned_result, "python", theme="monokai", line_numbers=True)
+            # Create and render syntax-highlighted code block with proper language detection
+            code = Syntax(
+                cleaned_result,
+                detect_language(file_paths[0]) if len(file_paths) == 1 else "text",
+                theme="monokai",
+                line_numbers=True,
+                word_wrap=True
+            )
             console.print(code)
-            rendered_code = console.export_text().strip()
+            rendered_code = console.export_text(styles=True).strip()
             console.clear()
             
             # Combine all parts with proper spacing
@@ -239,22 +293,34 @@ class FileContentReaderTool(BaseTool):
             # Create final console for panel
             final_console = Console(record=True, force_terminal=True)
             
-            # Create and render final panel
+            # Create and render final panel with TextBlock handling
             final_panel = Panel(
-                final_content,
+                convert_textblock(final_content),
                 title="Tool used: FileContentReader",
                 title_align="left",
                 border_style="cyan",
                 padding=(0, 1)
             )
             
-            # Render panel to string, ensuring all Rich objects are converted
-            final_console.print(final_panel)
-            final_output = final_console.export_text().strip()
-            
-            # Ensure result is serializable before returning
-            result = {"type": "text", "text": final_output}
-            return ensure_serializable(result)
+            # Render panel to string with proper error handling
+            try:
+                # First, ensure the panel itself is properly converted
+                if hasattr(final_panel, '__rich__'):
+                    final_console.print(final_panel)
+                    final_output = convert_textblock(final_console.export_text(styles=True).strip())
+                else:
+                    final_output = convert_textblock(str(final_panel))
+                
+                # Ensure the output is properly serializable
+                result = {"type": "text", "text": str(final_output)}
+                
+                # Verify serialization before returning
+                json.dumps(result)
+                return result
+            except Exception as e:
+                logging.error(f"Error in output processing: {str(e)}")
+                # Fallback to simple string output with minimal formatting
+                return {"type": "text", "text": str(final_content)}
 
         except Exception as e:
             return {"type": "text", "text": f"Error: {str(e)}"}

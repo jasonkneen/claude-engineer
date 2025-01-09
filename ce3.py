@@ -230,18 +230,22 @@ class Assistant:
         print(formatted_tools)
         print("\n---")
 
-    def _display_tool_usage(self, tool_name: str, input_data: Dict, result: Union[str, Dict[str, Any]]):
+    def _display_tool_usage(self, tool_name: str, input_data: Any, result: Union[str, Dict[str, Any]]):
         """
         If SHOW_TOOL_USAGE is enabled, display the input and result of a tool execution.
         Handles special cases like image data, large outputs, and serialized content for cleaner display.
         
         Args:
             tool_name: Name of the tool being used
-            input_data: Dictionary of tool inputs
+            input_data: Tool inputs (can be dict, string, or other types)
             result: Tool execution result, either as string or serialized dict
         """
         if not getattr(Config, 'SHOW_TOOL_USAGE', False):
             return
+
+        # Convert input_data to dict if it's not already
+        if not isinstance(input_data, dict):
+            input_data = {"input": str(input_data)}
 
         # Clean up and serialize input data
         cleaned_input = self._clean_data_for_display(input_data)
@@ -324,6 +328,18 @@ class Assistant:
         tool_input = tool_use.input or {}
         tool_result = None
 
+        # Convert any TextBlock objects in tool input
+        def convert_input(obj):
+            if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
+                return str(obj.text) if hasattr(obj, 'text') else str(obj)
+            if isinstance(obj, dict):
+                return {k: convert_input(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)):
+                return [convert_input(item) for item in obj]
+            return obj
+        
+        tool_input = convert_input(tool_input)
+
         try:
             module = importlib.import_module(f'tools.{tool_name}')
             tool_instance = self._find_tool_instance_in_module(module, tool_name)
@@ -360,8 +376,38 @@ class Assistant:
                             logging.error(f"Tool execution timed out: {tool_name}")
                             return {"type": "text", "text": f"Error: Tool execution timed out after 30 seconds"}
                     
-                    # Use _serialize_chat_content for consistent TextBlock and Rich object handling
-                    tool_result = self._serialize_chat_content(result)
+                    # Convert any TextBlock objects in the result immediately
+                    def convert_result(obj):
+                        if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
+                            return str(obj.text) if hasattr(obj, 'text') else str(obj)
+                        if isinstance(obj, dict):
+                            return {k: convert_result(v) for k, v in obj.items()}
+                        if isinstance(obj, (list, tuple)):
+                            return [convert_result(item) for item in obj]
+                        if hasattr(obj, '__rich__'):
+                            from rich.console import Console
+                            console = Console(record=True, force_terminal=True)
+                            console.print(obj)
+                            return console.export_text(styles=True).strip()
+                        return obj
+
+                    # Convert result before serialization
+                    converted_result = convert_result(result)
+                    
+                    # Always use _serialize_chat_content for consistent serialization
+                    tool_result = self._serialize_chat_content(converted_result)
+                    
+                    # Verify the result is properly formatted
+                    if not isinstance(tool_result, dict) or 'type' not in tool_result or 'text' not in tool_result:
+                        logging.error("Tool result not properly formatted after serialization")
+                        tool_result = {"type": "text", "text": str(converted_result)}
+                    
+                    # Double-check JSON serialization
+                    try:
+                        json.dumps(tool_result)
+                    except (TypeError, ValueError) as e:
+                        logging.error(f"Tool result serialization error: {str(e)}")
+                        tool_result = {"type": "text", "text": str(converted_result)}
                 except Exception as exec_err:
                     logging.error(f"Tool execution error: {str(exec_err)}", exc_info=True)
                     tool_result = {"type": "text", "text": f"Error executing tool '{tool_name}': {str(exec_err)}"}
@@ -451,31 +497,63 @@ class Assistant:
                             
                             # Ensure result is properly serialized
                             def ensure_tool_serializable(obj):
+                                """Ensure all objects are JSON serializable, with special handling for TextBlock and Rich objects."""
+                                # Handle TextBlock objects (from prompt_toolkit)
                                 if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
                                     return str(obj.text) if hasattr(obj, 'text') else str(obj)
-                                elif isinstance(obj, dict):
-                                    return {k: ensure_tool_serializable(v) for k, v in obj.items()}
-                                elif isinstance(obj, (list, tuple)):
-                                    return [ensure_tool_serializable(item) for item in obj]
-                                elif hasattr(obj, '__rich__'):
+                                
+                                # Handle Rich objects
+                                if hasattr(obj, '__rich__'):
                                     from rich.console import Console
                                     console = Console(record=True, force_terminal=True)
                                     console.print(obj)
                                     return console.export_text(styles=True).strip()
-                                return obj
+                                
+                                # Handle dictionaries recursively
+                                if isinstance(obj, dict):
+                                    return {k: ensure_tool_serializable(v) for k, v in obj.items()}
+                                
+                                # Handle lists and tuples recursively
+                                if isinstance(obj, (list, tuple)):
+                                    return [ensure_tool_serializable(item) for item in obj]
+                                
+                                # Handle objects with text attribute
+                                if hasattr(obj, 'text'):
+                                    return str(obj.text)
+                                
+                                # Handle objects with plain attribute
+                                if hasattr(obj, 'plain'):
+                                    return str(obj.plain)
+                                
+                                # Convert any other object to string
+                                try:
+                                    json.dumps(obj)  # Test if object is JSON serializable
+                                    return obj
+                                except (TypeError, ValueError):
+                                    return str(obj)
                             
                             # Convert any TextBlock or Rich objects in the result
                             serialized_result = ensure_tool_serializable(result)
 
-                            # Create the tool result with consistently formatted content
-                            serialized_content = serialized_result  # Now properly serialized
-                            if isinstance(serialized_content, dict) and 'text' in serialized_content:
-                                tool_result = {
-                                    "type": "tool_result",
-                                    "tool_use_id": content_block.id,
-                                    "content": [serialized_content]
+                            # Ensure the result is properly formatted as a text type
+                            if isinstance(serialized_result, dict) and 'text' in serialized_result:
+                                serialized_content = {
+                                    "type": "text",
+                                    "text": str(serialized_result['text'])
                                 }
-                                tool_results.append(tool_result)
+                            else:
+                                serialized_content = {
+                                    "type": "text",
+                                    "text": str(serialized_result)
+                                }
+
+                            # Create the tool result with consistently formatted content
+                            tool_result = {
+                                "type": "tool_result",
+                                "tool_use_id": content_block.id,
+                                "content": [serialized_content]
+                            }
+                            tool_results.append(tool_result)
 
                     # First append the assistant's tool use request
                     self.conversation_history.append({
@@ -485,9 +563,26 @@ class Assistant:
                     
                     # Then append tool results as user message (API requirement)
                     if tool_results:  # Only append if we have results
+                        # Ensure all tool results are properly serialized
+                        serialized_results = [ensure_tool_serializable(result) for result in tool_results]
+                        # Ensure complete serialization of content array
+                        serialized_content = []
+                        for result in serialized_results:
+                            if isinstance(result, dict) and 'content' in result:
+                                # Handle nested content arrays
+                                content_array = []
+                                for content_item in result['content']:
+                                    if isinstance(content_item, dict) and 'text' in content_item:
+                                        content_array.append({
+                                            'type': content_item.get('type', 'text'),
+                                            'text': str(content_item['text'])
+                                        })
+                                result['content'] = content_array
+                            serialized_content.append(result)
+                        
                         self.conversation_history.append({
                             "role": "user",
-                            "content": tool_results  # Use already serialized tool_results
+                            "content": serialized_content
                         })
                     
                     # Properly await the recursive call
@@ -604,14 +699,33 @@ class Assistant:
             if content is None:
                 return {"type": "text", "text": ""}
 
-            # Early handling of TextBlock objects
-            if hasattr(content, '__class__') and content.__class__.__name__ == 'TextBlock':
-                return {"type": "text", "text": str(content.text) if hasattr(content, 'text') else str(content)}
+            # Early handling of TextBlock and Rich objects
+            if hasattr(content, '__class__'):
+                # Handle TextBlock objects
+                if content.__class__.__name__ == 'TextBlock':
+                    return {"type": "text", "text": str(content.text) if hasattr(content, 'text') else str(content)}
+                # Handle Rich objects
+                if hasattr(content, '__rich__'):
+                    from rich.console import Console
+                    console = Console(record=True, force_terminal=True)
+                    console.print(content)
+                    return {"type": "text", "text": console.export_text(styles=True).strip()}
 
             # If already properly formatted, return as is
-            if isinstance(content, dict) and 'type' in content and 'text' in content:
-                content['text'] = str(content['text'])  # Ensure text is string
-                return content
+            if isinstance(content, dict):
+                # Handle nested TextBlock or Rich objects in dict values
+                if 'type' in content and 'text' in content:
+                    if hasattr(content['text'], '__class__'):
+                        if content['text'].__class__.__name__ == 'TextBlock':
+                            content['text'] = str(content['text'].text) if hasattr(content['text'], 'text') else str(content['text'])
+                        elif hasattr(content['text'], '__rich__'):
+                            from rich.console import Console
+                            console = Console(record=True, force_terminal=True)
+                            console.print(content['text'])
+                            content['text'] = console.export_text(styles=True).strip()
+                    else:
+                        content['text'] = str(content['text'])
+                    return content
 
             # Handle lists by recursively serializing items first
             if isinstance(content, (list, tuple)):
@@ -627,13 +741,32 @@ class Assistant:
 
             # Handle dictionaries
             if isinstance(content, dict):
-                if 'type' in content and 'text' in content:
-                    content['text'] = str(content['text'])
-                    return content
+                # Convert all values recursively
+                converted_dict = {}
+                for k, v in content.items():
+                    if hasattr(v, '__class__'):
+                        if v.__class__.__name__ == 'TextBlock':
+                            converted_dict[k] = str(v.text) if hasattr(v, 'text') else str(v)
+                        elif hasattr(v, '__rich__'):
+                            from rich.console import Console
+                            console = Console(record=True, force_terminal=True)
+                            console.print(v)
+                            converted_dict[k] = console.export_text(styles=True).strip()
+                        else:
+                            converted_dict[k] = self._serialize_chat_content(v)
+                    else:
+                        converted_dict[k] = v
+                
+                # If it's already a properly formatted content dict, return it
+                if 'type' in converted_dict and 'text' in converted_dict:
+                    converted_dict['text'] = str(converted_dict['text'])
+                    return converted_dict
+                
+                # Otherwise, convert the whole dict to a string
                 try:
-                    return {"type": "text", "text": json.dumps(content, indent=2)}
+                    return {"type": "text", "text": json.dumps(converted_dict, indent=2)}
                 except:
-                    return {"type": "text", "text": str(content)}
+                    return {"type": "text", "text": str(converted_dict)}
 
             # Handle objects with text or plain attributes
             if hasattr(content, 'plain'):
@@ -647,8 +780,28 @@ class Assistant:
         except Exception as e:
             logging.error(f"Error in _serialize_chat_content: {str(e)}")
             return {"type": "text", "text": f"Error serializing content: {str(e)}"}
-            return {"type": "text", "text": f"Error serializing content: {str(e)}"}
 
+
+    def _convert_textblock(self, obj: Any) -> Union[str, List[Any], Dict[str, Any]]:
+        """Convert TextBlock objects to string, preserving other types including dictionaries."""
+        if obj is None:
+            return ""
+        if isinstance(obj, (str, int, float, bool)):
+            return str(obj)
+        if isinstance(obj, (list, tuple)):
+            return [self._convert_textblock(item) for item in obj]
+        if isinstance(obj, dict):
+            return {k: self._convert_textblock(v) for k, v in obj.items()}
+        # Handle TextBlock objects
+        if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
+            return str(obj.text) if hasattr(obj, 'text') else str(obj)
+        # Handle Rich objects
+        if hasattr(obj, '__rich__'):
+            from rich.console import Console
+            console = Console(record=True, force_terminal=True)
+            console.print(obj)
+            return console.export_text(styles=True).strip()
+        return str(obj)
 
     async def chat(self, user_input: Union[str, List[Any]]) -> str:
         """
@@ -664,6 +817,11 @@ class Assistant:
         Raises:
             ValueError: If the input is empty or contains only whitespace
         """
+        # Input should already be converted from TextBlock in chat_loop()
+        # Just ensure it's a string for processing
+        if not isinstance(user_input, (str, list)):
+            user_input = str(user_input)
+            
         # Validate input is not empty or whitespace
         if isinstance(user_input, str):
             if not user_input.strip():
@@ -681,33 +839,45 @@ class Assistant:
                 return "Goodbye!"
 
         try:
-            # Ensure user input is properly serialized and validated
+            # Input is already converted in chat_loop(), just ensure it's a string
+            def ensure_string(content):
+                """Ensure content is a string."""
+                if content is None:
+                    return ""
+                return str(content)
+
+            # Convert and validate input
             if isinstance(user_input, str):
-                # Validate string content
+                # Already a string, just validate
                 if not user_input.strip():
                     return "Message cannot be empty or contain only whitespace"
                 serialized_input = [{"type": "text", "text": user_input}]
             elif isinstance(user_input, list):
                 if not user_input:
                     return "Message list cannot be empty"
-                    
+                
                 serialized_input = []
                 for item in user_input:
-                    try:
-                        serialized_item = self._serialize_chat_content(item)
-                        if serialized_item['text'].strip():  # Only add non-empty text
-                            serialized_input.append(serialized_item)
-                    except Exception as e:
-                        logging.warning(f"Failed to serialize input item: {str(e)}")
-                        # Convert problematic item to string representation
-                        text = str(item)
-                        if text.strip():
-                            serialized_input.append({"type": "text", "text": text})
-                            
+                    if isinstance(item, dict) and 'type' in item and 'text' in item:
+                        # Convert the text value even if properly formatted
+                        converted_text = ensure_string(item['text'])
+                        if converted_text.strip():
+                            serialized_input.append({"type": "text", "text": converted_text})
+                    else:
+                        # Convert other types
+                        converted_text = ensure_string(item)
+                        if converted_text.strip():
+                            serialized_input.append({"type": "text", "text": converted_text})
+                
                 if not serialized_input:
                     return "Message cannot contain only empty or whitespace content"
             else:
-                serialized_input = [self._serialize_chat_content(user_input)]
+                # Convert any other type
+                converted_text = ensure_string(user_input)
+                if converted_text.strip():
+                    serialized_input = [{"type": "text", "text": converted_text}]
+                else:
+                    return "Message cannot be empty or contain only whitespace"
 
             # Debug: verify serialization
             try:
@@ -716,30 +886,30 @@ class Assistant:
             except Exception as e:
                 logging.error("Failed to serialize input: %s", str(e))
 
-            # Convert any TextBlock objects in serialized input
-            def ensure_serializable(obj):
-                if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
-                    return str(obj.text) if hasattr(obj, 'text') else str(obj)
-                elif isinstance(obj, dict):
-                    return {k: ensure_serializable(v) for k, v in obj.items()}
-                elif isinstance(obj, (list, tuple)):
-                    return [ensure_serializable(item) for item in obj]
-                return obj
-
-            # Ensure input is serializable before adding to history
-            cleaned_input = ensure_serializable(serialized_input)
-            # Add serialized user message to conversation history
-            self.conversation_history.append({
-                "role": "user",
-                "content": cleaned_input
-            })
-
-            # Debug: verify conversation history
+            # Input is already properly serialized, no need for additional conversion
+            cleaned_input = serialized_input
+            # Ensure conversation history is properly serialized
             try:
-                json.dumps(self.conversation_history)
-                logging.debug("Successfully serialized conversation history")
+                # Convert any TextBlock objects in cleaned_input
+                serialized_content = [self._serialize_chat_content(item) for item in cleaned_input]
+                
+                # Add serialized user message to conversation history
+                history_entry = {
+                    "role": "user",
+                    "content": serialized_content
+                }
+                
+                # Verify serialization before adding
+                json.dumps(history_entry)
+                self.conversation_history.append(history_entry)
+                logging.debug("Successfully added user message to history")
             except Exception as e:
-                logging.error("Failed to serialize conversation history: %s", str(e))
+                logging.error(f"Failed to serialize conversation history: {str(e)}")
+                # Fallback: add as plain text
+                self.conversation_history.append({
+                    "role": "user",
+                    "content": [{"type": "text", "text": str(cleaned_input)}]
+                })
 
             # Log user message
             self._log_message("user", serialized_input)
@@ -770,23 +940,8 @@ class Assistant:
 
             # Handle response serialization
             try:
-                # Early TextBlock handling
-                if hasattr(response, '__class__') and response.__class__.__name__ == 'TextBlock':
-                    response = str(getattr(response, 'text', response))
-
-                # Now handle the possibly converted response
-                if isinstance(response, dict) and 'type' in response and 'text' in response:
-                    # Response is already properly serialized (from tool execution)
-                    serialized_response = {
-                        "type": "text",
-                        "text": str(response.get('text', ''))  # Ensure text is string, use get() for safety
-                    }
-                elif isinstance(response, str):
-                    # Convert string response to proper format
-                    serialized_response = {"type": "text", "text": response}
-                else:
-                    # Handle any other type of response
-                    serialized_response = {"type": "text", "text": str(response)}
+                # Use _serialize_chat_content for consistent TextBlock handling
+                serialized_response = self._serialize_chat_content(response)
                 
                 # Log assistant response
                 self._log_message("assistant", serialized_response)
@@ -798,16 +953,21 @@ class Assistant:
                 serialized_response = {"type": "text", "text": f"Error: {str(e)}"}
                 history_content = [serialized_response]
             
+            # Use _serialize_chat_content for consistent TextBlock handling
+            # Ensure each history item is properly serialized
+            cleaned_history = [self._serialize_chat_content(item) for item in history_content]
+            
             # Add to conversation history
             self.conversation_history.append({
                 "role": "assistant",
-                "content": history_content
+                "content": cleaned_history
             })
 
             # Capture context after successful response
             await self._capture_conversation_context()
             
-            return serialized_response.get('text', str(response))
+            # Return serialized text, falling back to string representation if needed
+            return str(serialized_response.get('text', str(response)))
 
         except Exception as e:
             logging.error(f"Error in chat: {str(e)}")
@@ -911,21 +1071,62 @@ Available tools:
                 # Use asyncio.shield to protect the prompt operation
                 user_input = await asyncio.shield(session.prompt_async("You: "))
                 
-                # Handle TextBlock objects from prompt_toolkit immediately
-                if hasattr(user_input, '__class__') and user_input.__class__.__name__ == 'TextBlock':
-                    user_input = str(user_input.text) if hasattr(user_input, 'text') else str(user_input)
-                elif isinstance(user_input, (dict, list)):
-                    # Handle nested TextBlocks in complex structures
-                    def convert_nested_textblocks(obj):
+                # Handle TextBlock and Rich objects from prompt_toolkit immediately
+                def convert_complex_objects(obj):
+                    """Convert TextBlock and Rich objects to properly formatted strings."""
+                    try:
+                        # Handle None
+                        if obj is None:
+                            return ""
+                            
+                        # Handle TextBlock objects first and foremost
                         if hasattr(obj, '__class__') and obj.__class__.__name__ == 'TextBlock':
                             return str(obj.text) if hasattr(obj, 'text') else str(obj)
-                        elif isinstance(obj, dict):
-                            return {k: convert_nested_textblocks(v) for k, v in obj.items()}
-                        elif isinstance(obj, (list, tuple)):
-                            return [convert_nested_textblocks(item) for item in obj]
+                            
+                        # Handle Rich objects with proper color preservation
+                        if hasattr(obj, '__rich__'):
+                            from rich.console import Console
+                            console = Console(record=True, force_terminal=True)
+                            console.print(obj)
+                            return console.export_text(styles=True).strip()
+                            
+                        # Handle dictionaries recursively
+                        if isinstance(obj, dict):
+                            return {k: convert_complex_objects(v) for k, v in obj.items()}
+                            
+                        # Handle lists and tuples recursively
+                        if isinstance(obj, (list, tuple)):
+                            return [convert_complex_objects(item) for item in obj]
+                            
+                        # Handle objects with text attribute
+                        if hasattr(obj, 'text'):
+                            return str(obj.text)
+                            
+                        # Handle objects with plain attribute
+                        if hasattr(obj, 'plain'):
+                            return str(obj.plain)
+                            
+                        # Test if object is JSON serializable
+                        json.dumps(obj)
                         return obj
-                    user_input = convert_nested_textblocks(user_input)
-                user_input = str(user_input).strip()
+                    except (TypeError, ValueError):
+                        return str(obj)
+                    except Exception as e:
+                        logging.error(f"Error in convert_complex_objects: {str(e)}")
+                        return str(obj)
+
+                # Convert any TextBlock or Rich objects in the input immediately
+                user_input = convert_complex_objects(user_input)
+                if not isinstance(user_input, str):
+                    user_input = str(user_input)
+                user_input = user_input.strip()
+                
+                # Verify the input is properly serializable
+                try:
+                    json.dumps({"text": user_input})
+                except (TypeError, ValueError) as e:
+                    logging.error(f"Input serialization error: {str(e)}")
+                    user_input = str(user_input)
 
                 if user_input.lower() == 'quit':
                     print("\n👋 Goodbye!")
