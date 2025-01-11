@@ -2,14 +2,14 @@ import base64
 import os
 
 from flask import Flask, jsonify, render_template, request, url_for
-from flask.json import JSONEncoder
+from flask.json.provider import DefaultJSONProvider
 from werkzeug.utils import secure_filename
 
 from ce3 import Assistant
 from config import Config
 
 # Custom JSON encoder to handle TextBlock objects
-class CustomJSONEncoder(JSONEncoder):
+class CustomJSONProvider(DefaultJSONProvider):
     def default(self, obj):
         try:
             # Convert TextBlock objects to their string representation
@@ -22,7 +22,7 @@ class CustomJSONEncoder(JSONEncoder):
             return str(obj)
 
 app = Flask(__name__, static_folder='static')
-app.json_encoder = CustomJSONEncoder
+app.json_provider_class = CustomJSONProvider
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 

@@ -1,6 +1,6 @@
 .context/
 .context_archive/
-logs/
-/tools/__pycache__
 /__pycache__
 /prompts/__pycache__
+/tools/__pycache__
+logs/
