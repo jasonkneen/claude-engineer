@@ -1,5 +1,4 @@
 from tools.base import BaseTool
-from typing import Union, Dict, Any
 import os
 import json
 import mimetypes
@@ -118,36 +117,21 @@ class FileContentReaderTool(BaseTool):
         return results
 
     def execute(self, **kwargs) -> str:
-        """
-        Read file contents and return them as a string.
-        The type/text wrapping will be handled by the Assistant class's serialization.
-        """
         file_paths = kwargs.get('file_paths', [])
         results = {}
 
         try:
-            if not file_paths:
-                return "Error: No file paths provided"
-
-            # For single file, return content directly
-            if len(file_paths) == 1:
-                path = file_paths[0]
-                if os.path.isdir(path):
-                    dir_results = self._read_directory(path)
-                    return "\n".join(f"{p}: {c}" for p, c in dir_results.items())
-                else:
-                    content = self._read_file(path)
-                    return str(content)
-
-            # For multiple files, return newline-separated content
             for path in file_paths:
                 if os.path.isdir(path):
+                    # If it's a directory, read it recursively
                     dir_results = self._read_directory(path)
                     results.update(dir_results)
                 else:
+                    # If it's a file, read it directly
                     content = self._read_file(path)
-                    results[path] = str(content)
-            return "\n".join(f"{p}: {c}" for p, c in results.items())
+                    results[path] = content
+
+            return json.dumps(results, indent=2)
 
         except Exception as e:
-            return f"Error: {str(e)}"
+            return json.dumps({"error": str(e)}, indent=2)
