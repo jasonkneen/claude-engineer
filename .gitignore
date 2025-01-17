@@ -5,4 +5,86 @@ uploads/
 .venv/
 __pycache__/
 .ruff_cache/
-.pytest_cache/
+.pytest_cache/# Dependencies
+node_modules/
+package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment and secrets
+.env
+.env.*
+.env.local
+.env.*.local
+config.local.js
+config.*.local.js
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+._*
+*~
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+.project
+.settings/
+.classpath
+.c9/
+*.launch
+.settings/
+*.code-workspace
+
+# Logs and debugging
+logs/
+*.log
+npm-debug.log*
+debug/
+.debug/
+
+# Build and dist
+dist/
+build/
+out/
+.next/
+.nuxt/
+.output/
+
+# Testing and coverage
+coverage/
+.nyc_output/
+.jest/
+
+# Temporary files
+.temp/
+.tmp/
+*.tmp
+.cache/
+.pid/
+*.pid
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.env/
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# Compiled output
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
