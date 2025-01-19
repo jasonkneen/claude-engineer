@@ -1,24 +1,29 @@
 from typing import List, Dict, Optional, Any, Union
+import numpy as np
+from dataclasses import dataclass, field
 from enum import Enum
-
-
-from dataclasses import dataclass
 import time
 import random
+from datetime import datetime, timedelta
+
+# Try to import tiktoken, fallback to simple tokenizer if not available
+try:
+    import tiktoken
+
+    TIKTOKEN_AVAILABLE = True
+except ImportError:
+    TIKTOKEN_AVAILABLE = False
+
 class SignificanceType(str, Enum):
     USER = "user"
     LLM = "llm"
     SYSTEM = "system"
     DERIVED = "derived"
 
-
 class MemoryLevel(str, Enum):
     WORKING = "working"
     SHORT_TERM = "short_term"
     LONG_TERM = "long_term"
-
-
-from dataclasses import dataclass, field
 
 @dataclass
 class MemoryBlock:
@@ -27,12 +32,21 @@ class MemoryBlock:
     significance_type: SignificanceType
     timestamp: float
     id: int
+    level: MemoryLevel = MemoryLevel.WORKING
+    embedding: Optional[np.ndarray] = None
     w3w_tokens: List[str] = field(default_factory=list)
-
+    access_count: int = 0
+    last_accessed: float = field(default_factory=time.time)
 
 class MemoryManager:
+
     def __init__(
-        self, working_memory_limit: int = 8192, short_term_memory_limit: int = 128000
+        self,
+        working_memory_limit: int = 8192,
+        short_term_limit: int = 128000,
+        similarity_threshold: float = 0.85,
+        promotion_threshold: int = 5,
+        cleanup_interval: int = 1000,
     ):
         self.working_memory: List[MemoryBlock] = []
         self.short_term_memory: List[MemoryBlock] = []
@@ -40,8 +54,17 @@ class MemoryManager:
         self.nexus_points: Dict[int, MemoryBlock] = {}
 
         self.working_memory_limit = working_memory_limit
-        self.short_term_memory_limit = short_term_memory_limit
+        self.short_term_limit = short_term_limit
+        self.similarity_threshold = similarity_threshold
+        self.promotion_threshold = promotion_threshold
+        self.cleanup_interval = cleanup_interval
 
+        # Initialize tokenizer if available
+        self.tokenizer = (
+            tiktoken.get_encoding("cl100k_base") if TIKTOKEN_AVAILABLE else None
+        )
+
+        # Stats
         self.block_counter = 0
         self.promotion_count = 0
         self.demotion_count = 0
@@ -49,6 +72,31 @@ class MemoryManager:
         self.retrieval_count = 0
         self.generation_count = 0
         self.last_recall_time = 0
+        self.last_cleanup_time = time.time()
+
+    def _count_tokens(self, text: str) -> int:
+        """Count tokens using tiktoken if available, otherwise use word-based counting"""
+        if TIKTOKEN_AVAILABLE and self.tokenizer:
+            return len(self.tokenizer.encode(text))
+        else:
+            # Simple word-based tokenization as fallback
+            return len(text.split())
+
+    def _generate_embedding(self, text: str) -> np.ndarray:
+        """Generate simple embedding for text (placeholder for proper embedding)"""
+        # This is a simplified embedding - in production use a proper embedding model
+        words = text.lower().split()
+        embedding = np.zeros(100)  # 100-dim embedding
+        for i, word in enumerate(words):
+            embedding[hash(word) % 100] += 1
+        return embedding / (np.linalg.norm(embedding) + 1e-8)
+
+    def _generate_w3w_tokens(self, text: str) -> List[str]:
+        """Generate What3Words-style tokens for the text"""
+        words = text.lower().split()
+        if len(words) < 3:
+            words.extend([""] * (3 - len(words)))
+        return [words[i] for i in sorted(random.sample(range(len(words)), 3))]
 
     def add_memory_block(
         self,
@@ -56,16 +104,19 @@ class MemoryManager:
         significance_type: Union[SignificanceType, str] = SignificanceType.USER,
     ) -> int:
         """Add a new memory block to working memory"""
-        tokens = len(content.split())  # Simple tokenization
+        # Create block
+        tokens = self._count_tokens(content)
         block = MemoryBlock(
             content=content,
             tokens=tokens,
             significance_type=significance_type,
             timestamp=time.time(),
             id=self.block_counter,
-            w3w_tokens=["word1", "word2", "word3"],
+            embedding=self._generate_embedding(content),
+            w3w_tokens=self._generate_w3w_tokens(content),
         )
 
+        # Add to working memory
         self.working_memory.append(block)
         self.block_counter += 1
         self.generation_count += 1
@@ -78,115 +129,221 @@ class MemoryManager:
         ]:
             self.nexus_points[block.id] = block
 
+        # Check memory limits and compress if needed
+        self._check_and_compress_memory()
+
+        # Periodic cleanup
+        if time.time() - self.last_cleanup_time > self.cleanup_interval:
+            self._cleanup_memory()
+            self.last_cleanup_time = time.time()
+
         return block.id
 
-    def promote_block(self, block_id: int) -> bool:
-        """Promote a memory block to the next level"""
-        # Find block in working memory
-        for i, block in enumerate(self.working_memory):
-            if block.id == block_id:
-                self.short_term_memory.append(block)
-                self.working_memory.pop(i)
-                self.promotion_count += 1
-                return True
+    def _check_and_compress_memory(self):
+        """Check memory limits and compress if needed"""
+        # Check working memory
+        working_size = sum(block.tokens for block in self.working_memory)
+        if working_size > self.working_memory_limit:
+            self._compress_working_memory()
 
-        # Find block in short-term memory
-        for i, block in enumerate(self.short_term_memory):
-            if block.id == block_id:
-                self.long_term_memory.append(block)
-                self.short_term_memory.pop(i)
-                self.promotion_count += 1
-                return True
+        # Check short-term memory
+        short_term_size = sum(block.tokens for block in self.short_term_memory)
+        if short_term_size > self.short_term_limit:
+            self._archive_to_long_term()
 
-        return False
+    def _compress_working_memory(self):
+        """Compress working memory by moving less relevant blocks to short-term"""
+        # Sort by relevance (access count and recency)
+        blocks = sorted(
+            self.working_memory,
+            key=lambda b: (b.access_count, -time.time() + b.last_accessed),
+        )
 
-    def demote_block(self, block_id: int) -> bool:
-        """Demote a memory block to the previous level"""
-        # Find block in long-term memory
-        for i, block in enumerate(self.long_term_memory):
-            if block.id == block_id:
-                self.short_term_memory.append(block)
-                self.long_term_memory.pop(i)
-                self.demotion_count += 1
-                return True
+        # Move least relevant blocks to short-term
+        while sum(b.tokens for b in self.working_memory) > self.working_memory_limit:
+            if not blocks:
+                break
+            block = blocks.pop(0)
+            block.level = MemoryLevel.SHORT_TERM
+            self.short_term_memory.append(block)
+            self.working_memory.remove(block)
+            self.demotion_count += 1
 
-        # Find block in short-term memory
-        for i, block in enumerate(self.short_term_memory):
-            if block.id == block_id:
-                self.working_memory.append(block)
-                self.short_term_memory.pop(i)
-                self.demotion_count += 1
-                return True
+    def _archive_to_long_term(self):
+        """Archive less relevant short-term memories to long-term"""
+        blocks = sorted(
+            self.short_term_memory,
+            key=lambda b: (b.access_count, -time.time() + b.last_accessed),
+        )
 
-        return False
+        while sum(b.tokens for b in self.short_term_memory) > self.short_term_limit:
+            if not blocks:
+                break
+            block = blocks.pop(0)
+            block.level = MemoryLevel.LONG_TERM
+            self.long_term_memory.append(block)
+            self.short_term_memory.remove(block)
+            self.demotion_count += 1
 
-    def merge_blocks(self, block_ids: List[int]) -> Optional[int]:
-        """Merge multiple memory blocks into one"""
-        blocks = []
-        # Collect blocks from all memory levels
-        for bid in block_ids:
-            block = self.find_block(bid)
-            if block:
-                blocks.append(block)
+    def _cleanup_memory(self):
+        """Cleanup old and redundant memories"""
+        # Remove old memories from long-term
+        current_time = time.time()
+        old_threshold = current_time - (7 * 24 * 60 * 60)  # 7 days
+        self.long_term_memory = [
+            block
+            for block in self.long_term_memory
+            if block.timestamp > old_threshold or block.id in self.nexus_points
+        ]
 
-        if len(blocks) < 2:
-            return None
+        # Merge similar memories
+        self._merge_similar_memories()
 
-        # Merge blocks
-        merged_content = " ".join(b.content for b in blocks)
-        merged_type = blocks[0].significance_type  # Use type of first block
-
-        # Remove original blocks
-        for block in blocks:
-            self.remove_block(block.id)
-
-        # Create new merged block
-        new_id = self.add_memory_block(merged_content, merged_type)
-        self.merge_count += 1
-
-        return new_id
-
-    def retrieve_blocks(self, keywords: List[str]) -> List[MemoryBlock]:
-        """Retrieve memory blocks based on keywords"""
-        start_time = time.time()
-
-        results = []
-        for keyword in keywords:
-            # Search in all memory levels
-            for block in (
-                self.working_memory + self.short_term_memory + self.long_term_memory
-            ):
-                if keyword.lower() in block.content.lower():
-                    results.append(block)
-
-        self.last_recall_time = (time.time() - start_time) * 1000  # Convert to ms
-        self.retrieval_count += 1
-
-        return list(set(results))  # Remove duplicates
-
-    def find_block(self, block_id: int) -> Optional[MemoryBlock]:
-        """Find a block in any memory level"""
-        for block in (
-            self.working_memory + self.short_term_memory + self.long_term_memory
-        ):
-            if block.id == block_id:
-                return block
-        return None
-
-    def remove_block(self, block_id: int) -> bool:
-        """Remove a block from any memory level"""
+    def _merge_similar_memories(self):
+        """Merge similar memories within each level"""
         for memory_list in [
             self.working_memory,
             self.short_term_memory,
             self.long_term_memory,
         ]:
-            for i, block in enumerate(memory_list):
-                if block.id == block_id:
-                    memory_list.pop(i)
-                    if block_id in self.nexus_points:
-                        del self.nexus_points[block_id]
-                    return True
-        return False
+            i = 0
+            while i < len(memory_list):
+                j = i + 1
+                while j < len(memory_list):
+                    block1, block2 = memory_list[i], memory_list[j]
+                    if (
+                        self._calculate_similarity(block1, block2)
+                        > self.similarity_threshold
+                    ):
+                        merged_content = f"{block1.content} | {block2.content}"
+                        merged_block = MemoryBlock(
+                            content=merged_content,
+                            tokens=self._count_tokens(merged_content),
+                            significance_type=block1.significance_type,
+                            timestamp=max(block1.timestamp, block2.timestamp),
+                            id=self.block_counter,
+                            level=block1.level,
+                            embedding=self._generate_embedding(merged_content),
+                            w3w_tokens=self._generate_w3w_tokens(merged_content),
+                            access_count=max(block1.access_count, block2.access_count),
+                            last_accessed=max(
+                                block1.last_accessed, block2.last_accessed
+                            ),
+                        )
+                        memory_list[i] = merged_block
+                        memory_list.pop(j)
+                        self.block_counter += 1
+                        self.merge_count += 1
+                    else:
+                        j += 1
+                i += 1
+
+    def _calculate_similarity(self, block1: MemoryBlock, block2: MemoryBlock) -> float:
+        """Calculate cosine similarity between two memory blocks"""
+        if block1.embedding is None or block2.embedding is None:
+            return 0.0
+        return float(np.dot(block1.embedding, block2.embedding))
+
+    def get_relevant_context(
+        self, query: str, max_blocks: int = 5
+    ) -> List[MemoryBlock]:
+        """Retrieve most relevant memory blocks for a given query"""
+        start_time = time.time()
+        query_embedding = self._generate_embedding(query)
+
+        # Calculate similarities and sort blocks
+        scored_blocks = []
+        for block in (
+            self.working_memory + self.short_term_memory + self.long_term_memory
+        ):
+            if block.embedding is not None:
+                similarity = float(np.dot(query_embedding, block.embedding))
+                scored_blocks.append((similarity, block))
+
+                # Update access stats
+                block.access_count += 1
+                block.last_accessed = time.time()
+
+                # Check for promotion
+                if block.access_count >= self.promotion_threshold:
+                    self._try_promote_block(block)
+
+        self.last_recall_time = (time.time() - start_time) * 1000  # Convert to ms
+        self.retrieval_count += 1
+
+        # Return top matches
+        return [block for _, block in sorted(scored_blocks, reverse=True)[:max_blocks]]
+
+    def _try_promote_block(self, block: MemoryBlock):
+        """Try to promote a block based on its current level"""
+        if block.level == MemoryLevel.LONG_TERM:
+            block.level = MemoryLevel.SHORT_TERM
+            self.long_term_memory.remove(block)
+            self.short_term_memory.append(block)
+            self.promotion_count += 1
+        elif block.level == MemoryLevel.SHORT_TERM:
+            block.level = MemoryLevel.WORKING
+            self.short_term_memory.remove(block)
+            self.working_memory.append(block)
+            self.promotion_count += 1
+
+        # Reset access count after promotion
+        block.access_count = 0
+
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """Get detailed statistics about the memory system"""
+        working_size = sum(block.tokens for block in self.working_memory)
+        short_term_size = sum(block.tokens for block in self.short_term_memory)
+
+        return {
+            "pools": {
+                "working": {
+                    "count": len(self.working_memory),
+                    "size": working_size,
+                    "utilization": working_size / self.working_memory_limit,
+                },
+                "short_term": {
+                    "count": len(self.short_term_memory),
+                    "size": short_term_size,
+                    "utilization": short_term_size / self.short_term_limit,
+                },
+                "long_term": {
+                    "count": len(self.long_term_memory),
+                    "size": sum(block.tokens for block in self.long_term_memory),
+                },
+            },
+            "operations": {
+                "promotions": self.promotion_count,
+                "demotions": self.demotion_count,
+                "merges": self.merge_count,
+                "retrievals": self.retrieval_count,
+                "generations": self.generation_count,
+            },
+            "nexus_points": {
+                "count": len(self.nexus_points),
+                "types": {
+                    "user": sum(
+                        1
+                        for b in self.nexus_points.values()
+                        if b.significance_type == SignificanceType.USER
+                    ),
+                    "llm": sum(
+                        1
+                        for b in self.nexus_points.values()
+                        if b.significance_type == SignificanceType.LLM
+                    ),
+                    "system": sum(
+                        1
+                        for b in self.nexus_points.values()
+                        if b.significance_type == SignificanceType.SYSTEM
+                    ),
+                },
+            },
+            "total_tokens": working_size
+            + short_term_size
+            + sum(block.tokens for block in self.long_term_memory),
+            "last_recall_time_ms": self.last_recall_time,
+        }
 
     def get_working_memory(self) -> List[MemoryBlock]:
         return self.working_memory
@@ -199,40 +356,3 @@ class MemoryManager:
 
     def get_nexus_points(self) -> Dict[int, MemoryBlock]:
         return self.nexus_points
-
-    def get_memory_stats(self) -> Dict[str, Any]:
-        """Get statistics about the memory system"""
-        return {
-            "total_blocks": len(
-                self.working_memory + self.short_term_memory + self.long_term_memory
-            ),
-            "working_memory_blocks": len(self.working_memory),
-            "short_term_memory_blocks": len(self.short_term_memory),
-            "long_term_memory_blocks": len(self.long_term_memory),
-            "nexus_points": len(self.nexus_points),
-            "promotions": self.promotion_count,
-            "demotions": self.demotion_count,
-            "merges": self.merge_count,
-            "retrievals": self.retrieval_count,
-            "generations": self.generation_count,
-            "last_recall_time_ms": self.last_recall_time,
-        }
-
-    def get_relevant_context(
-        self, query: str, max_blocks: int = 5
-    ) -> List[MemoryBlock]:
-        """Retrieve most relevant memory blocks for a given query"""
-        query_words = set(query.lower().split())
-        scored_blocks = []
-
-        # Search in all memory levels
-        for block in (
-            self.working_memory + self.short_term_memory + self.long_term_memory
-        ):
-            block_words = set(block.content.lower().split())
-            common_words = query_words & block_words
-            score = len(common_words) / len(block_words) if block_words else 0
-            scored_blocks.append((score, block))
-
-        # Sort by score and return top matches
-        return [block for _, block in sorted(scored_blocks, reverse=True)[:max_blocks]]

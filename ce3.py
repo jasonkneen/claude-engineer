@@ -24,7 +24,6 @@ from memory_manager import MemoryManager, MemoryBlock, SignificanceType, MemoryL
 # Configure logging
 logging.basicConfig(level=logging.ERROR, format="%(levelname)s: %(message)s")
 
-
 class Assistant:
     def __init__(self):
         if not getattr(Config, "ANTHROPIC_API_KEY", None):
@@ -33,8 +32,16 @@ class Assistant:
         # Initialize Anthropic client
         self.client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
 
-        # Initialize memory system
-        self.memory_manager = MemoryManager()
+        # Initialize memory system with configurable limits
+        self.memory_manager = MemoryManager(
+            working_memory_limit=getattr(Config, "WORKING_MEMORY_LIMIT", 8192),
+            short_term_limit=getattr(Config, "SHORT_TERM_MEMORY_LIMIT", 128000),
+            similarity_threshold=getattr(Config, "MEMORY_SIMILARITY_THRESHOLD", 0.85),
+            promotion_threshold=getattr(Config, "MEMORY_PROMOTION_THRESHOLD", 5),
+            cleanup_interval=getattr(Config, "MEMORY_CLEANUP_INTERVAL", 1000),
+        )
+
+        # Memory tracking
         self.last_recall_time = 0
         self.generation_count = 0
         self.promotion_count = 0
@@ -149,6 +156,63 @@ class Assistant:
         self.console.print(formatted_tools)
         self.console.print("\n---")
 
+    def _display_memory_stats(self):
+        """Display memory system statistics"""
+        stats = self.memory_manager.get_memory_stats()
+
+        # Memory pools section
+        pools_text = []
+        for pool_name, pool_data in stats["pools"].items():
+            utilization = pool_data.get("utilization", 0)
+            color = "green"
+            if utilization > 0.75:
+                color = "yellow"
+            if utilization > 0.90:
+                color = "red"
+
+            pool_info = f"{pool_name.replace('_', ' ').title()}: {pool_data['count']} blocks, {pool_data['size']:,} tokens"
+            if "utilization" in pool_data:
+                pool_info += (
+                    f" ([{color}]{pool_data['utilization']*100:.1f}%[/{color}])"
+                )
+            pools_text.append(pool_info)
+
+        # Operations section
+        ops_text = [
+            f"Generations: {stats['operations']['generations']:,}",
+            f"Promotions: {stats['operations']['promotions']:,}",
+            f"Demotions: {stats['operations']['demotions']:,}",
+            f"Merges: {stats['operations']['merges']:,}",
+            f"Retrievals: {stats['operations']['retrievals']:,}",
+        ]
+
+        # Nexus points section
+        nexus_text = [
+            f"Total: {stats['nexus_points']['count']:,}",
+            "Types: "
+            + ", ".join(
+                f"{k}: {v:,}" for k, v in stats["nexus_points"]["types"].items()
+            ),
+        ]
+
+        # Performance section
+        perf_text = [
+            f"Total Tokens: {stats['total_tokens']:,}",
+            f"Last Recall: {stats['last_recall_time_ms']:.2f}ms",
+        ]
+
+        # Create panels
+        panels = [
+            Panel("\n".join(pools_text), title="Memory Pools", border_style="blue"),
+            Panel("\n".join(ops_text), title="Operations", border_style="green"),
+            Panel("\n".join(nexus_text), title="Nexus Points", border_style="yellow"),
+            Panel("\n".join(perf_text), title="Performance", border_style="cyan"),
+        ]
+
+        # Display all panels
+        for panel in panels:
+            self.console.print(panel)
+
     def _display_token_usage(self, usage):
         """Display a visual representation of token usage and remaining tokens."""
         used_percentage = (
@@ -204,7 +268,7 @@ class Assistant:
                     # Add memory block for successful tool execution
                     self.memory_manager.add_memory_block(
                         content=f"Tool execution: {tool_name} - {str(result)}",
-                        significance_type="system",
+                        significance_type=SignificanceType.SYSTEM,
                     )
                 except Exception as exec_err:
                     tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
@@ -294,6 +358,17 @@ class Assistant:
     def _get_completion(self):
         """Get a completion from the Anthropic API with memory integration."""
         try:
+            # Get relevant context from memory
+            context_blocks = self.memory_manager.get_relevant_context(
+                " ".join(
+                    msg.get("content", "") for msg in self.conversation_history[-3:]
+                )
+            )
+
+            # Add context to system prompt
+            context_text = "\n".join(block.content for block in context_blocks)
+            system_prompt = f"{SystemPrompts.DEFAULT}\n\nContext:\n{context_text}\n\n{SystemPrompts.TOOL_USAGE}"
+
             response = self.client.messages.create(
                 model=Config.MODEL,
                 max_tokens=min(
@@ -303,7 +378,7 @@ class Assistant:
                 temperature=self.temperature,
                 tools=self.tools,
                 messages=self.conversation_history,
-                system=f"{SystemPrompts.DEFAULT}\n\n{SystemPrompts.TOOL_USAGE}",
+                system=system_prompt,
             )
 
             # Update token usage
@@ -382,7 +457,7 @@ class Assistant:
 
                 # Add memory block for assistant response
                 self.memory_manager.add_memory_block(
-                    content=final_content, significance_type="assistant"
+                    content=final_content, significance_type=SignificanceType.LLM
                 )
 
                 return final_content
@@ -405,12 +480,15 @@ class Assistant:
                 return "Conversation reset!"
             elif user_input.lower() == "quit":
                 return "Goodbye!"
+            elif user_input.lower() == "memory":
+                self._display_memory_stats()
+                return "Memory stats displayed above."
 
         try:
             # Add to conversation history and memory
             self.conversation_history.append({"role": "user", "content": user_input})
             self.memory_manager.add_memory_block(
-                content=user_input, significance_type="user"
+                content=user_input, significance_type=SignificanceType.USER
             )
 
             # Show thinking indicator if enabled
@@ -432,7 +510,13 @@ class Assistant:
 
     def reset(self):
         """Reset memory_manager, conversation history and stats."""
-        self.memory_manager = MemoryManager()
+        self.memory_manager = MemoryManager(
+            working_memory_limit=getattr(Config, "WORKING_MEMORY_LIMIT", 8192),
+            short_term_limit=getattr(Config, "SHORT_TERM_MEMORY_LIMIT", 128000),
+            similarity_threshold=getattr(Config, "MEMORY_SIMILARITY_THRESHOLD", 0.85),
+            promotion_threshold=getattr(Config, "MEMORY_PROMOTION_THRESHOLD", 5),
+            cleanup_interval=getattr(Config, "MEMORY_CLEANUP_INTERVAL", 1000),
+        )
         self.last_recall_time = 0
         self.generation_count = 0
         self.promotion_count = 0
@@ -450,6 +534,7 @@ class Assistant:
 
 Type 'refresh' to reload available tools
 Type 'reset' to clear conversation history
+Type 'memory' to view memory stats
 Type 'quit' to exit
 
 Available tools:
@@ -475,6 +560,7 @@ def main():
 
 Type 'refresh' to reload available tools
 Type 'reset' to clear conversation history
+Type 'memory' to view memory stats
 Type 'quit' to exit
 
 Available tools:
