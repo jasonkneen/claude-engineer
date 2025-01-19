@@ -51,7 +51,7 @@ function App() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold">
-                Memory Management{' '}
+                CORTEX - {' '}
                 <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
                   Dashboard
                 </span>
@@ -71,7 +71,7 @@ function App() {
                 }`}
               />
             </div>
-            <p className="text-muted-foreground">Real-time memory system visualization</p>
+            <p className="text-muted-foreground">Nexus Memory Management System</p>
           </div>
           <div className="flex items-center gap-4">
             <button
