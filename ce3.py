@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # ce3.py
 import anthropic
 from rich.console import Console
