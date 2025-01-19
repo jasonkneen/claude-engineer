@@ -1,5 +1,6 @@
 *.pyc
 .DS_Store
+node_modules
 .codegpt
 .context/
 .context_archive/
@@ -9,3 +10,5 @@
 .venv/
 __pycache__/
 uploads/
+/mcp/servers/notification-server/node_modules
+/mcp/servers/observer-server-new/node_modules

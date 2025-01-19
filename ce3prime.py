@@ -1,38 +1,28 @@
 # ce3.py
-import asyncio
+import anthropic
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.live import Live
+from rich.spinner import Spinner
+from rich.panel import Panel
+from typing import List, Dict, Any
 import importlib
 import inspect
-import json
-import logging
-import os
 import pkgutil
-import platform
+import os
+import json
 import sys
-from typing import Any, Dict, List, Optional, Union
-
-import anthropic
-import psutil
-from prompt_toolkit.shortcuts import PromptSession
-from prompt_toolkit.styles import Style
-from rich.console import Console
-from rich.live import Live
-from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.spinner import Spinner
+import logging
 
 from config import Config
-
-# Default spinner cleanup timeout in seconds (shorter for better CLI responsiveness)
-SPINNER_CLEANUP_TIMEOUT = getattr(Config, 'SPINNER_CLEANUP_TIMEOUT', 2.0)
-from prompts.system_prompts import SystemPrompts
 from tools.base import BaseTool
-from tools.contextmanager import ContextManager
+from prompt_toolkit import prompt
+from prompt_toolkit.styles import Style
+from prompts.system_prompts import SystemPrompts
 
 # Configure logging to only show ERROR level and above
-logging.basicConfig(
-    level=logging.ERROR,
-    format='%(levelname)s: %(message)s'
-)
+logging.basicConfig(level=logging.ERROR, format="%(levelname)s: %(message)s")
+
 
 class Assistant:
     """
@@ -45,22 +35,19 @@ class Assistant:
     """
 
     def __init__(self):
-        if not getattr(Config, 'ANTHROPIC_API_KEY', None):
+        if not getattr(Config, "ANTHROPIC_API_KEY", None):
             raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
 
-        # Initialize Anthropics async client for proper async support
-        self.client = anthropic.AsyncAnthropic(api_key=Config.ANTHROPIC_API_KEY)
+        # Initialize Anthropics client
+        self.client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
 
         self.conversation_history: List[Dict[str, Any]] = []
         self.console = Console()
 
-        self.thinking_enabled = getattr(Config, 'ENABLE_THINKING', False)
-        self.temperature = getattr(Config, 'DEFAULT_TEMPERATURE', 0.7)
+        self.thinking_enabled = getattr(Config, "ENABLE_THINKING", False)
+        self.temperature = getattr(Config, "DEFAULT_TEMPERATURE", 0.7)
         self.total_tokens_used = 0
 
-        # Initialize context manager
-        self.context_manager = ContextManager()
-        
         self.tools = self._load_tools()
 
     def _execute_uv_install(self, package_name: str) -> bool:
@@ -68,31 +55,31 @@ class Assistant:
         Execute the uvpackagemanager tool directly to install the missing package.
         Returns True if installation seems successful (no errors in output), otherwise False.
         """
+
         class ToolUseMock:
             name = "uvpackagemanager"
-            input = {
-                "command": "install",
-                "packages": [package_name]
-            }
+            input = {"command": "install", "packages": [package_name]}
 
         result = self._execute_tool(ToolUseMock())
         if "Error" not in result and "failed" not in result.lower():
             self.console.print("[green]The package was installed successfully.[/green]")
             return True
         else:
-            self.console.print(f"[red]Failed to install {package_name}. Output:[/red] {result}")
+            self.console.print(
+                f"[red]Failed to install {package_name}. Output:[/red] {result}"
+            )
             return False
 
     def _load_tools(self) -> List[Dict[str, Any]]:
         """
         Dynamically load all tool classes from the tools directory.
         If a dependency is missing, prompt the user to install it via uvpackagemanager.
-        
+
         Returns:
             A list of tools (dicts) containing their 'name', 'description', and 'input_schema'.
         """
         tools = []
-        tools_path = getattr(Config, 'TOOLS_DIR', None)
+        tools_path = getattr(Config, "TOOLS_DIR", None)
 
         if tools_path is None:
             self.console.print("[red]TOOLS_DIR not set in Config[/red]")
@@ -100,41 +87,57 @@ class Assistant:
 
         # Clear cached tool modules for fresh import
         for module_name in list(sys.modules.keys()):
-            if module_name.startswith('tools.') and module_name != 'tools.base':
+            if module_name.startswith("tools.") and module_name != "tools.base":
                 del sys.modules[module_name]
 
         try:
             for module_info in pkgutil.iter_modules([str(tools_path)]):
-                if module_info.name == 'base':
+                if module_info.name == "base":
                     continue
 
                 # Attempt loading the tool module
                 try:
-                    module = importlib.import_module(f'tools.{module_info.name}')
+                    module = importlib.import_module(f"tools.{module_info.name}")
                     self._extract_tools_from_module(module, tools)
                 except ImportError as e:
                     # Handle missing dependencies
                     missing_module = self._parse_missing_dependency(str(e))
-                    self.console.print(f"\n[yellow]Missing dependency:[/yellow] {missing_module} for tool {module_info.name}")
-                    user_response = input(f"Would you like to install {missing_module}? (y/n): ").lower()
+                    self.console.print(
+                        f"\n[yellow]Missing dependency:[/yellow] {missing_module} for tool {module_info.name}"
+                    )
+                    user_response = input(
+                        f"Would you like to install {missing_module}? (y/n): "
+                    ).lower()
 
-                    if user_response == 'y':
+                    if user_response == "y":
                         success = self._execute_uv_install(missing_module)
                         if success:
                             # Retry loading the module after installation
                             try:
-                                module = importlib.import_module(f'tools.{module_info.name}')
+                                module = importlib.import_module(
+                                    f"tools.{module_info.name}"
+                                )
                                 self._extract_tools_from_module(module, tools)
                             except Exception as retry_err:
-                                self.console.print(f"[red]Failed to load tool after installation: {str(retry_err)}[/red]")
+                                self.console.print(
+                                    f"[red]Failed to load tool after installation: {str(retry_err)}[/red]"
+                                )
                         else:
-                            self.console.print(f"[red]Installation of {missing_module} failed. Skipping this tool.[/red]")
+                            self.console.print(
+                                f"[red]Installation of {missing_module} failed. Skipping this tool.[/red]"
+                            )
                     else:
-                        self.console.print(f"[yellow]Skipping tool {module_info.name} due to missing dependency[/yellow]")
+                        self.console.print(
+                            f"[yellow]Skipping tool {module_info.name} due to missing dependency[/yellow]"
+                        )
                 except Exception as mod_err:
-                    self.console.print(f"[red]Error loading module {module_info.name}:[/red] {str(mod_err)}")
+                    self.console.print(
+                        f"[red]Error loading module {module_info.name}:[/red] {str(mod_err)}"
+                    )
         except Exception as overall_err:
-            self.console.print(f"[red]Error in tool loading process:[/red] {str(overall_err)}")
+            self.console.print(
+                f"[red]Error in tool loading process:[/red] {str(overall_err)}"
+            )
 
         return tools
 
@@ -155,35 +158,47 @@ class Assistant:
         Append them to the 'tools' list.
         """
         for name, obj in inspect.getmembers(module):
-            if (inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool):
+            if inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool:
                 try:
                     tool_instance = obj()
-                    tools.append({
-                        "name": tool_instance.name,
-                        "description": tool_instance.description,
-                        "input_schema": tool_instance.input_schema
-                    })
-                    self.console.print(f"[green]Loaded tool:[/green] {tool_instance.name}")
+                    tools.append(
+                        {
+                            "name": tool_instance.name,
+                            "description": tool_instance.description,
+                            "input_schema": tool_instance.input_schema,
+                        }
+                    )
+                    self.console.print(
+                        f"[green]Loaded tool:[/green] {tool_instance.name}"
+                    )
                 except Exception as tool_init_err:
-                    self.console.print(f"[red]Error initializing tool {name}:[/red] {str(tool_init_err)}")
+                    self.console.print(
+                        f"[red]Error initializing tool {name}:[/red] {str(tool_init_err)}"
+                    )
 
     def refresh_tools(self):
         """
         Refresh the list of tools and show newly discovered tools.
         """
-        current_tool_names = {tool['name'] for tool in self.tools}
+        current_tool_names = {tool["name"] for tool in self.tools}
         self.tools = self._load_tools()
-        new_tool_names = {tool['name'] for tool in self.tools}
+        new_tool_names = {tool["name"] for tool in self.tools}
         new_tools = new_tool_names - current_tool_names
 
         if new_tools:
             self.console.print("\n")
             for tool_name in new_tools:
-                tool_info = next((t for t in self.tools if t['name'] == tool_name), None)
+                tool_info = next(
+                    (t for t in self.tools if t["name"] == tool_name), None
+                )
                 if tool_info:
-                    description_lines = tool_info['description'].strip().split('\n')
-                    formatted_description = '\n    '.join(line.strip() for line in description_lines)
-                    self.console.print(f"[bold green]NEW[/bold green] 🔧 [cyan]{tool_name}[/cyan]:\n    {formatted_description}")
+                    description_lines = tool_info["description"].strip().split("\n")
+                    formatted_description = "\n    ".join(
+                        line.strip() for line in description_lines
+                    )
+                    self.console.print(
+                        f"[bold green]NEW[/bold green] 🔧 [cyan]{tool_name}[/cyan]:\n    {formatted_description}"
+                    )
         else:
             self.console.print("\n[yellow]No new tools found[/yellow]")
 
@@ -192,9 +207,11 @@ class Assistant:
         Print a list of currently loaded tools.
         """
         self.console.print("\n[bold cyan]Available tools:[/bold cyan]")
-        tool_names = [tool['name'] for tool in self.tools]
+        tool_names = [tool["name"] for tool in self.tools]
         if tool_names:
-            formatted_tools = ", ".join([f"🔧 [cyan]{name}[/cyan]" for name in tool_names])
+            formatted_tools = ", ".join(
+                [f"🔧 [cyan]{name}[/cyan]" for name in tool_names]
+            )
         else:
             formatted_tools = "No tools available."
         self.console.print(formatted_tools)
@@ -205,24 +222,24 @@ class Assistant:
         If SHOW_TOOL_USAGE is enabled, display the input and result of a tool execution.
         Handles special cases like image data and large outputs for cleaner display.
         """
-        if not getattr(Config, 'SHOW_TOOL_USAGE', False):
+        if not getattr(Config, "SHOW_TOOL_USAGE", False):
             return
 
         # Clean up input data by removing any large binary/base64 content
         cleaned_input = self._clean_data_for_display(input_data)
-        
+
         # Clean up result data
         cleaned_result = self._clean_data_for_display(result)
 
         tool_info = f"""[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input, indent=2)}
 [cyan]📤 Result:[/cyan] {cleaned_result}"""
-        
+
         panel = Panel(
             tool_info,
             title=f"Tool used: {tool_name}",
             title_align="left",
             border_style="cyan",
-            padding=(1, 2)
+            padding=(1, 2),
         )
         self.console.print(panel)
 
@@ -238,7 +255,7 @@ class Assistant:
                 return self._clean_parsed_data(parsed_data)
             except json.JSONDecodeError:
                 # If it's a long string, check for base64 patterns
-                if len(data) > 1000 and ';base64,' in data:
+                if len(data) > 1000 and ";base64," in data:
                     return "[base64 data omitted]"
                 return data
         elif isinstance(data, dict):
@@ -255,8 +272,10 @@ class Assistant:
             cleaned = {}
             for key, value in data.items():
                 # Handle image data in various formats
-                if key in ['data', 'image', 'source'] and isinstance(value, str):
-                    if len(value) > 1000 and (';base64,' in value or value.startswith('data:')):
+                if key in ["data", "image", "source"] and isinstance(value, str):
+                    if len(value) > 1000 and (
+                        ";base64," in value or value.startswith("data:")
+                    ):
                         cleaned[key] = "[base64 data omitted]"
                     else:
                         cleaned[key] = value
@@ -265,7 +284,7 @@ class Assistant:
             return cleaned
         elif isinstance(data, list):
             return [self._clean_parsed_data(item) for item in data]
-        elif isinstance(data, str) and len(data) > 1000 and ';base64,' in data:
+        elif isinstance(data, str) and len(data) > 1000 and ";base64," in data:
             return "[base64 data omitted]"
         return data
 
@@ -279,7 +298,7 @@ class Assistant:
         tool_result = None
 
         try:
-            module = importlib.import_module(f'tools.{tool_name}')
+            module = importlib.import_module(f"tools.{tool_name}")
             tool_instance = self._find_tool_instance_in_module(module, tool_name)
 
             if not tool_instance:
@@ -298,8 +317,15 @@ class Assistant:
             tool_result = f"Error executing tool: {str(e)}"
 
         # Display tool usage with proper handling of structured data
-        self._display_tool_usage(tool_name, tool_input, 
-            json.dumps(tool_result) if not isinstance(tool_result, str) else tool_result)
+        self._display_tool_usage(
+            tool_name,
+            tool_input,
+            (
+                json.dumps(tool_result)
+                if not isinstance(tool_result, str)
+                else tool_result
+            ),
+        )
         return tool_result
 
     def _find_tool_instance_in_module(self, module, tool_name: str):
@@ -307,7 +333,7 @@ class Assistant:
         Search a given module for a tool class matching tool_name and return an instance of it.
         """
         for name, obj in inspect.getmembers(module):
-            if (inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool):
+            if inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool:
                 candidate_tool = obj()
                 if candidate_tool.name == tool_name:
                     return candidate_tool
@@ -318,10 +344,16 @@ class Assistant:
         Display a visual representation of token usage and remaining tokens.
         Uses only the tracked total_tokens_used.
         """
-        used_percentage = (self.total_tokens_used / Config.MAX_CONVERSATION_TOKENS) * 100
-        remaining_tokens = max(0, Config.MAX_CONVERSATION_TOKENS - self.total_tokens_used)
+        used_percentage = (
+            self.total_tokens_used / Config.MAX_CONVERSATION_TOKENS
+        ) * 100
+        remaining_tokens = max(
+            0, Config.MAX_CONVERSATION_TOKENS - self.total_tokens_used
+        )
 
-        self.console.print(f"\nTotal used: {self.total_tokens_used:,} / {Config.MAX_CONVERSATION_TOKENS:,}")
+        self.console.print(
+            f"\nTotal used: {self.total_tokens_used:,} / {Config.MAX_CONVERSATION_TOKENS:,}"
+        )
 
         bar_width = 40
         filled = int(used_percentage / 100 * bar_width)
@@ -336,126 +368,106 @@ class Assistant:
         self.console.print(f"[{color}][{bar}] {used_percentage:.1f}%[/{color}]")
 
         if remaining_tokens < 20000:
-            self.console.print(f"[bold red]Warning: Only {remaining_tokens:,} tokens remaining![/bold red]")
+            self.console.print(
+                f"[bold red]Warning: Only {remaining_tokens:,} tokens remaining![/bold red]"
+            )
 
         self.console.print("---")
 
-    async def _get_completion(self) -> str:
+    def _get_completion(self):
         """
         Get a completion from the Anthropic API.
         Handles both text-only and multimodal messages.
-        Returns:
-            str: The response text or error message
         """
         try:
-            # Use async client's create method
-            response = await self.client.messages.create(
+            response = self.client.messages.create(
                 model=Config.MODEL,
                 max_tokens=min(
                     Config.MAX_TOKENS,
-                    Config.MAX_CONVERSATION_TOKENS - self.total_tokens_used
+                    Config.MAX_CONVERSATION_TOKENS - self.total_tokens_used,
                 ),
                 temperature=self.temperature,
                 tools=self.tools,
                 messages=self.conversation_history,
-                system=f"{SystemPrompts.DEFAULT}\n\n{SystemPrompts.TOOL_USAGE}"
+                system=f"{SystemPrompts.DEFAULT}\n\n{SystemPrompts.TOOL_USAGE}",
             )
 
             # Update token usage based on response usage
-            if hasattr(response, 'usage') and response.usage:
-                message_tokens = response.usage.input_tokens + response.usage.output_tokens
+            if hasattr(response, "usage") and response.usage:
+                message_tokens = (
+                    response.usage.input_tokens + response.usage.output_tokens
+                )
                 self.total_tokens_used += message_tokens
                 self._display_token_usage(response.usage)
 
             if self.total_tokens_used >= Config.MAX_CONVERSATION_TOKENS:
-                self.console.print("\n[bold red]Token limit reached! Please reset the conversation.[/bold red]")
+                self.console.print(
+                    "\n[bold red]Token limit reached! Please reset the conversation.[/bold red]"
+                )
                 return "Token limit reached! Please type 'reset' to start a new conversation."
 
             if response.stop_reason == "tool_use":
-                self.console.print("\n[bold yellow]  Handling Tool Use...[/bold yellow]\n")
+                self.console.print(
+                    "\n[bold yellow]  Handling Tool Use...[/bold yellow]\n"
+                )
 
                 tool_results = []
-                if getattr(response, 'content', None) and isinstance(response.content, list):
+                if getattr(response, "content", None) and isinstance(
+                    response.content, list
+                ):
                     # Execute each tool in the response content
                     for content_block in response.content:
                         if content_block.type == "tool_use":
                             result = self._execute_tool(content_block)
-                            
-                            # Ensure result is JSON serializable
-                            if hasattr(result, 'text'):  # Handle TextBlock objects
-                                serialized_result = str(result.text)
-                            elif isinstance(result, (list, dict)):
-                                # Keep structured data intact but ensure it's serializable
-                                try:
-                                    # Test JSON serialization
-                                    json.dumps(result)
-                                    serialized_result = result
-                                except (TypeError, json.JSONDecodeError):
-                                    # If serialization fails, convert to string
-                                    serialized_result = str(result)
+
+                            # Handle structured data (like image blocks) vs text
+                            if isinstance(result, (list, dict)):
+                                tool_results.append(
+                                    {
+                                        "type": "tool_result",
+                                        "tool_use_id": content_block.id,
+                                        "content": result,  # Keep structured data intact
+                                    }
+                                )
                             else:
-                                serialized_result = str(result)
-
-                            # Create the tool result with serializable content
-                            tool_result = {
-                                "type": "tool_result",
-                                "tool_use_id": content_block.id,
-                            }
-
-                            if isinstance(serialized_result, (list, dict)):
-                                tool_result["content"] = serialized_result
-                            else:
-                                tool_result["content"] = [{"type": "text", "text": serialized_result}]
-
-                            tool_results.append(tool_result)
+                                # Convert text results to proper content blocks
+                                tool_results.append(
+                                    {
+                                        "type": "tool_result",
+                                        "tool_use_id": content_block.id,
+                                        "content": [
+                                            {"type": "text", "text": str(result)}
+                                        ],
+                                    }
+                                )
 
                     # Append tool usage to conversation and continue
-                    self.conversation_history.append({
-                        "role": "assistant",
-                        "content": response.content
-                    })
-                    self.conversation_history.append({
-                        "role": "user",
-                        "content": tool_results
-                    })
-                    return self._get_completion()  # Recursive call to continue the conversation
+                    self.conversation_history.append(
+                        {"role": "assistant", "content": response.content}
+                    )
+                    self.conversation_history.append(
+                        {"role": "user", "content": tool_results}
+                    )
+                    return (
+                        self._get_completion()
+                    )  # Recursive call to continue the conversation
 
                 else:
-                    self.console.print("[red]No tool content received despite 'tool_use' stop reason.[/red]")
+                    self.console.print(
+                        "[red]No tool content received despite 'tool_use' stop reason.[/red]"
+                    )
                     return "Error: No tool content received"
 
             # Final assistant response
-            if (getattr(response, 'content', None) and 
-                isinstance(response.content, list) and 
-                response.content):
-                # Ensure content is serializable before adding to history
-                serializable_content = []
-                for content_item in response.content:
-                    if hasattr(content_item, 'type'):
-                        if content_item.type == 'text':
-                            serializable_content.append({
-                                'type': 'text',
-                                'text': content_item.text
-                            })
-                        elif content_item.type == 'tool_use':
-                            serializable_content.append({
-                                'type': 'tool_use',
-                                'id': content_item.id,
-                                'name': content_item.name,
-                                'input': content_item.input
-                            })
-                    else:
-                        # Handle any other type by converting to string
-                        serializable_content.append({
-                            'type': 'text',
-                            'text': str(content_item)
-                        })
-                
-                final_content = serializable_content[0]['text'] if serializable_content else "No response content available."
-                self.conversation_history.append({
-                    "role": "assistant",
-                    "content": serializable_content
-                })
+            if (
+                getattr(response, "content", None)
+                and isinstance(response.content, list)
+                and response.content
+            ):
+                final_content = response.content[0].text
+                self.conversation_history.append(
+                    {"role": "assistant", "content": response.content}
+                )
                 return final_content
             else:
                 self.console.print("[red]No content in final response.[/red]")
@@ -465,211 +477,57 @@ class Assistant:
             logging.error(f"Error in _get_completion: {str(e)}")
             return f"Error: {str(e)}"
 
-    async def _capture_conversation_context(self):
-        """
-        Capture and summarize the current conversation context.
-        """
-        if not self.conversation_history:
-            return
-
-        # Convert conversation history to a structured format for context
-        context_data = json.dumps(self.conversation_history, indent=2)
-
-        # Capture and summarize context
-        await self.context_manager.capture_context(context_data)
-
-    def get_latest_context_summary(self) -> Optional[Dict]:
-        """
-        Retrieve the most recent context summary.
-        """
-        return self.context_manager.get_latest_context(include_full=False)
-
-    def get_all_context_summaries(self, include_archived: bool = False) -> List[Dict]:
-        """
-        Retrieve all available context summaries.
-        """
-        return self.context_manager.get_all_summaries(include_archived=include_archived)
-
-    async def _show_thinking_spinner(self):
-        """
-        Async context manager for showing thinking spinner.
-        """
-        spinner = Spinner('dots', text='Thinking...', style="cyan")
-        with Live(spinner, refresh_per_second=10, transient=True) as live:
-            try:
-                while True:
-                    await asyncio.sleep(0.1)
-                    live.refresh()
-            except asyncio.CancelledError:
-                pass
-
-    async def chat(self, user_input: Union[str, List[Any]]) -> str:
+    def chat(self, user_input):
         """
         Process a chat message from the user.
         user_input can be either a string (text-only) or a list (multimodal message)
-        
-        Args:
-            user_input: The input message from the user
-            
-        Returns:
-            str: The response message
-            
-        Raises:
-            ValueError: If the input is empty or contains only whitespace
         """
-        # Validate input is not empty or whitespace
+        # Handle special commands only for text-only messages
         if isinstance(user_input, str):
-            if not user_input.strip():
-                return "Message cannot be empty or contain only whitespace"
-            
-            # Handle special commands
-            cmd = user_input.lower()
-            if cmd == 'refresh':
+            if user_input.lower() == "refresh":
                 self.refresh_tools()
                 return "Tools refreshed successfully!"
-            elif cmd == 'reset':
-                await self.reset()
+            elif user_input.lower() == "reset":
+                self.reset()
                 return "Conversation reset!"
-            elif cmd == 'quit':
+            elif user_input.lower() == "quit":
                 return "Goodbye!"
 
         try:
-            # Ensure user input is properly serialized and validated
-            if isinstance(user_input, str):
-                # Validate string content
-                if not user_input.strip():
-                    return "Message cannot be empty or contain only whitespace"
-                serialized_input = [{"type": "text", "text": user_input}]
-            elif isinstance(user_input, list):
-                if not user_input:
-                    return "Message list cannot be empty"
-                    
-                serialized_input = []
-                for item in user_input:
-                    if hasattr(item, 'text'):  # Handle TextBlock objects
-                        text = str(item.text)
-                        if text.strip():  # Only add non-empty text
-                            serialized_input.append({"type": "text", "text": text})
-                    elif isinstance(item, dict):
-                        # Keep structured data intact but ensure it's serializable
-                        try:
-                            json.dumps(item)  # Test JSON serialization
-                            serialized_input.append(item)
-                        except (TypeError, json.JSONDecodeError):
-                            text = str(item)
-                            if text.strip():  # Only add non-empty text
-                                serialized_input.append({"type": "text", "text": text})
-                    else:
-                        text = str(item)
-                        if text.strip():  # Only add non-empty text
-                            serialized_input.append({"type": "text", "text": text})
-                            
-                if not serialized_input:
-                    return "Message cannot contain only empty or whitespace content"
-            else:
-                serialized_input = [{"type": "text", "text": str(user_input)}]
-
-            # Add serialized user message to conversation history
-            self.conversation_history.append({
-                "role": "user",
-                "content": serialized_input
-            })
+            # Add user message to conversation history
+            self.conversation_history.append(
+                {
+                    "role": "user",
+                    "content": user_input,  # This can be either string or list
+                }
+            )
 
             # Show thinking indicator if enabled
             if self.thinking_enabled:
-                # Create and start the spinner task as a background process
-                # This task will run independently until we cancel it
-                spinner_task = asyncio.create_task(self._show_thinking_spinner())
-                try:
-                    # Execute the main operation while spinner runs
-                    response = await self._get_completion()
-                finally:
-                    # Always ensure proper cleanup of the spinner task
-                    # We cancel the task and wait for it to complete with a configurable timeout
-                    # to prevent potential hangs during cleanup
-                    spinner_task.cancel()
-                    try:
-                        # Wait for task cleanup with configured timeout
-                        await asyncio.wait_for(spinner_task, timeout=SPINNER_CLEANUP_TIMEOUT)
-                    except asyncio.CancelledError:
-                        # Expected cancellation, task cleaned up successfully
-                        pass
-                    except asyncio.TimeoutError:
-                        # Log detailed system info with timeout
-                        mem = psutil.virtual_memory()
-                        cpu_percent = psutil.cpu_percent(interval=0.1)
-                        logging.warning(
-                            f"Spinner task cleanup timed out after {SPINNER_CLEANUP_TIMEOUT}s. "
-                            f"System info: CPU: {cpu_percent}%, Memory: {mem.percent}% used, "
-                            f"Platform: {platform.system()} {platform.release()}"
-                        )
-                    except Exception as e:
-                        # Log unexpected errors during task cleanup with stack trace
-                        logging.error(f"Error cleaning up spinner task: {str(e)}", exc_info=True)
+                with Live(
+                    Spinner("dots", text="Thinking...", style="cyan"),
+                    refresh_per_second=10,
+                    transient=True,
+                ):
+                    response = self._get_completion()
             else:
-                response = await self._get_completion()
+                response = self._get_completion()
 
-            # Capture context after successful response
-            await self._capture_conversation_context()
-            
             return response
 
         except Exception as e:
             logging.error(f"Error in chat: {str(e)}")
             return f"Error: {str(e)}"
 
-    async def reset(self):
+    def reset(self):
         """
         Reset the assistant's memory and token usage.
-        Ensures proper cleanup of conversation context before resetting.
-        
-        This is an async operation because it needs to capture the final context
-        before clearing the conversation history.
-        
-        The reset operation includes:
-        1. Capturing final context if there's conversation history
-        2. Clearing conversation history
-        3. Resetting token usage counter
-        
-        Returns:
-            None
-            
-        Raises:
-            asyncio.TimeoutError: If context capture times out
-            Exception: For other errors during reset
         """
-        try:
-            # Capture final context before reset if there's conversation history
-            if self.conversation_history:
-                try:
-                    # Use a shorter timeout for context capture
-                    await asyncio.wait_for(
-                        self._capture_conversation_context(),
-                        timeout=min(SPINNER_CLEANUP_TIMEOUT, 1.0)  # Use shorter timeout for better responsiveness
-                    )
-                except asyncio.TimeoutError:
-                    # Get system info for better error context
-                    mem = psutil.virtual_memory()
-                    cpu_percent = psutil.cpu_percent(interval=0.1)
-                    logging.warning(
-                        f"Context capture timed out during reset. "
-                        f"System info: CPU: {cpu_percent}%, Memory: {mem.percent}% used"
-                    )
-                except Exception as e:
-                    logging.error(
-                        f"Error capturing final context during reset: {str(e)}",
-                        exc_info=True
-                    )
-            
-            # Clear conversation history and reset token usage
-            self.conversation_history = []
-            self.total_tokens_used = 0
-            self.console.print("\n[bold green]🔄 Assistant memory has been reset![/bold green]")
-        except Exception as e:
-            error_msg = f"Critical error during reset operation: {str(e)}"
-            logging.error(error_msg, exc_info=True)
-            self.console.print(f"\n[bold red]Error:[/bold red] {error_msg}")
-            raise  # Re-raise to ensure caller knows about the failure
+        self.conversation_history = []
+        self.total_tokens_used = 0
+        self.console.print(
+            "\n[bold green]🔄 Assistant memory has been reset![/bold green]"
+        )
 
         welcome_text = """
 # Claude Engineer v3. A self-improving assistant framework with tool creation
@@ -684,14 +542,13 @@ Available tools:
         self.display_available_tools()
 
 
-async def main():
+def main():
     """
     Entry point for the assistant CLI loop.
     Provides a prompt for user input and handles 'quit' and 'reset' commands.
     """
     console = Console()
-    style = Style.from_dict({'prompt': 'orange'})
-    session = PromptSession(style=style)
+    style = Style.from_dict({"prompt": "orange"})
 
     try:
         assistant = Assistant()
@@ -714,35 +571,19 @@ Available tools:
 
     while True:
         try:
-            user_input = (await session.prompt_async("You: ")).strip()
+            user_input = prompt("You: ", style=style).strip()
 
-            if user_input.lower() == 'quit':
-                console.print("\n[bold blue]\U0001F44B Goodbye![/bold blue]")
+            if user_input.lower() == "quit":
+                console.print("\n[bold blue]👋 Goodbye![/bold blue]")
                 break
-            elif user_input.lower() == 'reset':
-                await assistant.reset()
+            elif user_input.lower() == "reset":
+                assistant.reset()
                 continue
 
-            try:
-                response = await assistant.chat(user_input)
-            except anthropic.APIConnectionError as conn_error:
-                console.print(f"\n[bold red]Connection Error:[/bold red] {str(conn_error)}")
-                continue
-            except anthropic.RateLimitError as rate_error:
-                console.print(f"\n[bold red]Rate Limit Error:[/bold red] {str(rate_error)}")
-                continue
-            except anthropic.APIError as api_error:
-                console.print(f"\n[bold red]API Error:[/bold red] {str(api_error)}")
-                continue
-            except asyncio.TimeoutError:
-                console.print("\n[bold red]Request timed out[/bold red]")
-                continue
-            except Exception as chat_error:
-                console.print(f"\n[bold red]Unexpected Error:[/bold red] {str(chat_error)}")
-                continue
+            response = assistant.chat(user_input)
             console.print("\n[bold purple]Claude Engineer:[/bold purple]")
             if isinstance(response, str):
-                safe_response = response.replace('[', '\[').replace(']', '\]')
+                safe_response = response.replace("[", "\\[").replace("]", "\\]")
                 console.print(safe_response)
             else:
                 console.print(str(response))
@@ -754,12 +595,4 @@ Available tools:
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except RuntimeError as e:
-        if "cannot be called from a running event loop" in str(e):
-            # If we're already in an event loop, just run the coroutine
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(main())
-        else:
-            raise
+    main()
