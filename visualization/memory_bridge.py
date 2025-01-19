@@ -12,7 +12,7 @@ from websockets.exceptions import ConnectionClosed
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s%(f)s - %(levelname)s - %(message)s",
+    format="%(asctime)s - %(levelname)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
@@ -261,20 +261,66 @@ class MemoryBridge:
         logger.info("Memory bridge stopped")
 
 
-def start_memory_bridge(memory_manager):
-    """Start the memory bridge in a background task"""
+async def verify_connection(websocket, timeout=10):
+    """Verify WebSocket connection is working with ping/pong"""
+    try:
+        pong_waiter = await websocket.ping()
+        await asyncio.wait_for(pong_waiter, timeout=timeout)
+        return True
+    except Exception as e:
+        logger.error(f"Connection verification failed: {e}")
+        return False
+
+async def start_memory_bridge(memory_manager, timeout=30, max_retries=5):
+    """Start and initialize the memory bridge with connection verification
+    
+    Args:
+        memory_manager: The memory manager instance
+        timeout: Maximum time to wait for initialization in seconds
+        max_retries: Maximum number of connection attempts
+        
+    Returns:
+        Initialized MemoryBridge instance or raises exception on failure
+    """
     bridge = MemoryBridge(memory_manager)
-
-    async def run_bridge():
+    retry_count = 0
+    
+    while retry_count < max_retries:
         try:
-            await bridge.run()
+            # Attempt connection with timeout
+            connect_task = bridge.connect()
+            connected = await asyncio.wait_for(connect_task, timeout=timeout/max_retries)
+            
+            if not connected:
+                raise ConnectionError("Failed to establish WebSocket connection")
+                
+            # Verify connection is working
+            if not await verify_connection(bridge.websocket):
+                raise ConnectionError("Connection verification failed")
+                
+            # Start the bridge running task
+            loop = asyncio.get_event_loop()
+            run_task = loop.create_task(bridge.run())
+            
+            def cleanup_bridge(task):
+                if bridge.connected:
+                    loop.create_task(bridge.websocket.close())
+                bridge.stop()
+                
+            run_task.add_done_callback(cleanup_bridge)
+            
+            logger.info("Memory bridge successfully initialized and started")
+            return bridge
+            
+        except asyncio.TimeoutError:
+            retry_count += 1
+            logger.warning(f"Connection attempt {retry_count}/{max_retries} timed out")
+            continue
+            
         except Exception as e:
-            logger.error(f"Memory bridge error: {e}")
-            raise
-        finally:
-            bridge.stop()
-
-    loop = asyncio.get_event_loop()
-    loop.create_task(run_bridge())
-    logger.info("Memory bridge started")
-    return bridge
+            retry_count += 1
+            logger.error(f"Failed to initialize bridge (attempt {retry_count}/{max_retries}): {e}")
+            await asyncio.sleep(1)
+            continue
+            
+    raise RuntimeError(f"Failed to start memory bridge after {max_retries} attempts")

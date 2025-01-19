@@ -28,9 +28,9 @@ export function MemoryPoolCard({
   return (
     <motion.div
       className={cn(
-        "relative overflow-hidden rounded-lg p-6 backdrop-blur-md",
-        "bg-gradient-to-br from-card/80 to-card/40 dark:from-card/40 dark:to-card/20",
-        "border border-primary/5 shadow-xl",
+        "relative overflow-hidden rounded-lg p-4 backdrop-blur-md",
+        "bg-gradient-to-br from-card/20 to-card/10 dark:from-card/10 dark:to-card/5",
+        "border border-primary/10 shadow-xl",
         className
       )}
       initial={{ opacity: 0, y: 20 }}
@@ -41,85 +41,52 @@ export function MemoryPoolCard({
       <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-white/0 pointer-events-none" />
       
       {/* Content */}
-      <div className="relative z-10 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-medium text-muted-foreground">{title}</h3>
-          <motion.span 
-            className="text-sm text-muted-foreground"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-          >
+      <div className="relative z-10">
+        <h3 className="text-base font-medium text-muted-foreground mb-3">{title}</h3>
+
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-baseline gap-2">
+            <span className="text-xl font-bold">
+              {tokens.toLocaleString()}
+            </span>
+            <span className="text-sm text-muted-foreground">tokens</span>
+          </div>
+          <div className="text-sm text-muted-foreground">
             Blocks: {blocks}
-          </motion.span>
+          </div>
         </div>
 
-        <motion.div
-          className="flex items-baseline gap-1"
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <span className="text-2xl font-bold gradient-text">
-            {tokens.toLocaleString()}
-          </span>
-          <span className="text-sm text-muted-foreground">tokens</span>
-        </motion.div>
-
         {utilization !== undefined && (
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Utilization</span>
-              <motion.span 
-                className={cn(
-                  "font-medium",
-                  utilization >= 90 ? "text-red-500" :
-                  utilization >= 70 ? "text-yellow-500" :
-                  utilization >= 50 ? "text-blue-500" :
-                  "text-green-500"
-                )}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 }}
-              >
-                {utilization.toFixed(1)}%
-              </motion.span>
-            </div>
-            <div className="relative h-2 overflow-hidden rounded-full bg-secondary/50">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 relative h-1.5 overflow-hidden rounded-full bg-secondary/50">
               <motion.div
                 className={cn(
-                  "absolute inset-y-0 left-0 bg-gradient-to-r transition-all duration-500",
+                  "absolute inset-y-0 left-0 bg-gradient-to-r",
                   getUtilizationColor(utilization)
                 )}
                 initial={{ width: "0%" }}
                 animate={{ width: `${utilization}%` }}
                 transition={{ duration: 0.8, ease: "easeOut" }}
               >
-                <div className="absolute inset-0 bg-white/20" />
-                <motion.div
-                  className="absolute inset-0 bg-white/20"
-                  initial={{ x: "-100%" }}
-                  animate={{ x: "100%" }}
-                  transition={{
-                    duration: 2,
-                    repeat: Infinity,
-                    ease: "linear"
-                  }}
-                />
+                <div className="absolute inset-0 bg-white/10" />
               </motion.div>
+            </div>
+            <div className={cn(
+              "text-sm font-medium",
+              utilization >= 90 ? "text-red-500" :
+              utilization >= 70 ? "text-yellow-500" :
+              utilization >= 50 ? "text-blue-500" :
+              "text-green-500"
+            )}>
+              {utilization.toFixed(0)}%
             </div>
           </div>
         )}
 
         {limit && (
-          <motion.div 
-            className="text-sm text-muted-foreground"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.4 }}
-          >
+          <div className="text-sm text-muted-foreground mt-2">
             Limit: {limit.toLocaleString()} tokens
-          </motion.div>
+          </div>
         )}
       </div>
 

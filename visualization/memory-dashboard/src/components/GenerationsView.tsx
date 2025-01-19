@@ -2,8 +2,8 @@ import { motion } from "framer-motion";
 import { StatsComponentProps } from "../types/memory";
 
 export function GenerationsView({ stats, className }: StatsComponentProps) {
-  const chartSize = 180;
-  const strokeWidth = 30;
+  const chartSize = 140;
+  const strokeWidth = 35;
   const radius = (chartSize - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
@@ -26,20 +26,25 @@ export function GenerationsView({ stats, className }: StatsComponentProps) {
       transition={{ duration: 0.5 }}
       className={className}
     >
-      <div className="relative overflow-hidden rounded-lg p-6 backdrop-blur-md bg-gradient-to-br from-card/80 to-card/40 dark:from-card/40 dark:to-card/20 border border-primary/5 shadow-xl h-full">
+      <div className="relative overflow-hidden rounded-lg p-6 backdrop-blur-md bg-gradient-to-br from-card/30 to-card/10 dark:from-card/20 dark:to-card/5 border border-primary/5 shadow-xl h-full">
         {/* Background gradient effect */}
         <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-white/0 pointer-events-none" />
         
         {/* Content */}
         <div className="relative z-10 space-y-4">
-          <h3 className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-            Memory Generations
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-bold text-white">
+              Memory <span className="text-purple-500">Generations</span>
+            </h3>
+            <div className="text-sm text-muted-foreground">
+              Total Compressions: {stats.operations.compression_count}
+            </div>
+          </div>
 
-          <div className="flex flex-col items-center justify-center">
+          <div className="flex items-center justify-between">
             {/* Donut Chart */}
-            <div className="relative" style={{ width: chartSize, height: chartSize }}>
-              <svg width={chartSize} height={chartSize} className="transform -rotate-90">
+            <div className="relative flex-shrink-0" style={{ width: chartSize, height: chartSize }}>
+              <svg width={chartSize} height={chartSize} className="transform -rotate-90 drop-shadow-lg">
                 {/* Purple segment */}
                 <circle
                   cx={chartSize / 2}
@@ -76,45 +81,32 @@ export function GenerationsView({ stats, className }: StatsComponentProps) {
                   className="transition-all duration-1000"
                 />
               </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="text-4xl font-bold text-purple-500">
-                    {stats.generations}
-                    <div className="text-sm text-muted-foreground mt-1">Generations</div>
-                  </div>
-                </div>
-              </div>
             </div>
 
-            {/* Stats Grid */}
-            <div className="grid grid-cols-3 gap-4 mt-6 w-full">
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground">Compression Rate</div>
-                <div className="text-lg font-semibold text-blue-500/80">
+            {/* Stats List */}
+            <div className="flex-1 ml-8 space-y-4">
+              <div>
+                <div className="text-2xl font-bold text-purple-500">
+                  {stats.generations}
+                  <span className="text-sm font-normal text-muted-foreground ml-2">generations</span>
+                </div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold text-blue-500">
                   {compressionRate.toFixed(2)}
-                  <span className="text-xs font-normal text-muted-foreground ml-1">
-                    per gen
-                  </span>
+                  <span className="text-sm font-normal text-muted-foreground ml-2">compressions/gen</span>
                 </div>
               </div>
-
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground">Avg Memory Size</div>
-                <div className="text-lg font-semibold text-green-500/80">
+              <div>
+                <div className="text-lg font-semibold text-green-500">
                   {avgMemorySize.toLocaleString()}
-                  <span className="text-xs font-normal text-muted-foreground ml-1">
-                    tokens
-                  </span>
+                  <span className="text-sm font-normal text-muted-foreground ml-2">avg tokens</span>
                 </div>
               </div>
-
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground">Memory Efficiency</div>
-                <div className="text-lg font-semibold text-yellow-500/80">
+              <div>
+                <div className="text-lg font-semibold text-yellow-500">
                   {memoryEfficiency.toFixed(1)}%
-                  <span className="text-xs font-normal text-muted-foreground ml-1">
-                    merge
-                  </span>
+                  <span className="text-sm font-normal text-muted-foreground ml-2">efficiency</span>
                 </div>
               </div>
             </div>

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # ce3.py
 import anthropic
+import asyncio
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.live import Live
@@ -200,13 +201,13 @@ class Assistant:
 
         # Clean up input data by removing any large binary/base64 content
         cleaned_input = self._clean_data_for_display(input_data)
-        
+
         # Clean up result data
         cleaned_result = self._clean_data_for_display(result)
 
         tool_info = f"""[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input, indent=2)}
 [cyan]📤 Result:[/cyan] {cleaned_result}"""
-        
+
         panel = Panel(
             tool_info,
             title=f"Tool used: {tool_name}",
@@ -367,7 +368,7 @@ class Assistant:
                     for content_block in response.content:
                         if content_block.type == "tool_use":
                             result = self._execute_tool(content_block)
-                            
+
                             # Handle structured data (like image blocks) vs text
                             if isinstance(result, (list, dict)):
                                 tool_results.append({
@@ -462,55 +463,55 @@ class Assistant:
         self.console.print("\n[bold green]🔄 Assistant memory has been reset![/bold green]")
 
         welcome_text = """
-				# Claude Engineer v3. A self-improving assistant framework with tool creation
+# Claude Engineer v3. A self-improving assistant framework with tool creation
 
-				Type 'refresh' to reload available tools
-				Type 'reset' to clear conversation history
-				Type 'quit' to exit
+Type 'refresh' to reload available tools
+Type 'reset' to clear conversation history
+Type 'quit' to exit
 
-				Available tools:
-				"""
+Available tools:
+"""
         self.console.print(Markdown(welcome_text))
         self.display_available_tools()
 
 
-	def main():
-	    """
-	    Entry point for the assistant CLI loop.
-	    Provides a prompt for user input and handles 'quit' and 'reset' commands.
-	    """
-	    console = Console()
-	    style = Style.from_dict({'prompt': 'orange'})
+def main():
+    """
+    Entry point for the assistant CLI loop.
+    Provides a prompt for user input and handles 'quit' and 'reset' commands.
+    """
+    console = Console()
+    style = Style.from_dict({"prompt": "orange"})
 
-	    try:
-	        assistant = Assistant()
-	    except ValueError as e:
-	        console.print(f"[bold red]Error:[/bold red] {str(e)}")
-	        console.print("Please ensure ANTHROPIC_API_KEY is set correctly.")
-	        return
+    try:
+        assistant = Assistant()
+    except ValueError as e:
+        console.print(f"[bold red]Error:[/bold red] {str(e)}")
+        console.print("Please ensure ANTHROPIC_API_KEY is set correctly.")
+        return
 
-		    welcome_text = """
-		# Claude Engineer v3. A self-improving assistant framework with tool creation
+    welcome_text = """
+# Claude Engineer v3. A self-improving assistant framework with tool creation
 
-		Type 'refresh' to reload available tools
-		Type 'reset' to clear conversation history
-		Type 'quit' to exit
+Type 'refresh' to reload available tools
+Type 'reset' to clear conversation history
+Type 'quit' to exit
 
-		Available tools:
-		"""
-		    console.print(Markdown(welcome_text))
-	    assistant.display_available_tools()
+Available tools:
+"""
+    console.print(Markdown(welcome_text))
+    assistant.display_available_tools()
 
-	    while True:
-	        try:
-	            user_input = prompt("You: ", style=style).strip()
+    while True:
+        try:
+            user_input = prompt("You: ", style=style).strip()
 
-	            if user_input.lower() == 'quit':
-	                console.print("\n[bold blue]👋 Goodbye![/bold blue]")
-	                break
-	            elif user_input.lower() == 'reset':
-	                assistant.reset()
-	                continue
+            if user_input.lower() == "quit":
+                console.print("\n[bold blue]👋 Goodbye![/bold blue]")
+                break
+            elif user_input.lower() == "reset":
+                assistant.reset()
+                continue
 
             response = assistant.chat(user_input)
             console.print("\n[bold purple]Claude Engineer:[/bold purple]")
@@ -520,10 +521,10 @@ class Assistant:
             else:
                 console.print(str(response))
 
-	        except KeyboardInterrupt:
-	            continue
-	        except EOFError:
-	            break
+        except KeyboardInterrupt:
+            continue
+        except EOFError:
+            break
 
 
 if __name__ == "__main__":

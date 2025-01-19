@@ -1,16 +1,33 @@
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Union
+from enum import Enum
+
+
 from dataclasses import dataclass
 import time
 import random
+class SignificanceType(str, Enum):
+    USER = "user"
+    LLM = "llm"
+    SYSTEM = "system"
+    DERIVED = "derived"
 
+
+class MemoryLevel(str, Enum):
+    WORKING = "working"
+    SHORT_TERM = "short_term"
+    LONG_TERM = "long_term"
+
+
+from dataclasses import dataclass, field
 
 @dataclass
 class MemoryBlock:
     content: str
     tokens: int
-    significance_type: str
+    significance_type: SignificanceType
     timestamp: float
     id: int
+    w3w_tokens: List[str] = field(default_factory=list)
 
 
 class MemoryManager:
@@ -33,7 +50,11 @@ class MemoryManager:
         self.generation_count = 0
         self.last_recall_time = 0
 
-    def add_memory_block(self, content: str, significance_type: str = "user") -> int:
+    def add_memory_block(
+        self,
+        content: str,
+        significance_type: Union[SignificanceType, str] = SignificanceType.USER,
+    ) -> int:
         """Add a new memory block to working memory"""
         tokens = len(content.split())  # Simple tokenization
         block = MemoryBlock(
@@ -42,6 +63,7 @@ class MemoryManager:
             significance_type=significance_type,
             timestamp=time.time(),
             id=self.block_counter,
+            w3w_tokens=["word1", "word2", "word3"],
         )
 
         self.working_memory.append(block)
@@ -49,7 +71,11 @@ class MemoryManager:
         self.generation_count += 1
 
         # Add to nexus points if significant
-        if significance_type in ["user", "llm", "system"]:
+        if significance_type in [
+            SignificanceType.USER,
+            SignificanceType.LLM,
+            SignificanceType.SYSTEM,
+        ]:
             self.nexus_points[block.id] = block
 
         return block.id
@@ -173,3 +199,40 @@ class MemoryManager:
 
     def get_nexus_points(self) -> Dict[int, MemoryBlock]:
         return self.nexus_points
+
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """Get statistics about the memory system"""
+        return {
+            "total_blocks": len(
+                self.working_memory + self.short_term_memory + self.long_term_memory
+            ),
+            "working_memory_blocks": len(self.working_memory),
+            "short_term_memory_blocks": len(self.short_term_memory),
+            "long_term_memory_blocks": len(self.long_term_memory),
+            "nexus_points": len(self.nexus_points),
+            "promotions": self.promotion_count,
+            "demotions": self.demotion_count,
+            "merges": self.merge_count,
+            "retrievals": self.retrieval_count,
+            "generations": self.generation_count,
+            "last_recall_time_ms": self.last_recall_time,
+        }
+
+    def get_relevant_context(
+        self, query: str, max_blocks: int = 5
+    ) -> List[MemoryBlock]:
+        """Retrieve most relevant memory blocks for a given query"""
+        query_words = set(query.lower().split())
+        scored_blocks = []
+
+        # Search in all memory levels
+        for block in (
+            self.working_memory + self.short_term_memory + self.long_term_memory
+        ):
+            block_words = set(block.content.lower().split())
+            common_words = query_words & block_words
+            score = len(common_words) / len(block_words) if block_words else 0
+            scored_blocks.append((score, block))
+
+        # Sort by score and return top matches
+        return [block for _, block in sorted(scored_blocks, reverse=True)[:max_blocks]]
