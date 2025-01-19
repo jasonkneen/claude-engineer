@@ -53,7 +53,7 @@ function App() {
               <h1 className="text-3xl font-bold">
                 CORTEX - {' '}
                 <span className="bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-                  Dashboard
+                  Memory Management System
                 </span>
               </h1>
               <motion.div
@@ -71,7 +71,7 @@ function App() {
                 }`}
               />
             </div>
-            <p className="text-muted-foreground">Nexus Memory Management System</p>
+            <p className="text-muted-foreground">Central Context Hypervisor</p>
           </div>
           <div className="flex items-center gap-4">
             <button
@@ -88,52 +88,30 @@ function App() {
           </div>
         </div>
 
-        {/* Main Dashboard Grid */}
-        <div className="grid gap-3 md:grid-cols-12">
-          {/* Left Column - Memory Generation Chart */}
-          <div className="md:col-span-6">
-            <GenerationsView
-              stats={stats}
-              className="h-[400px]"
-            />
-          </div>
+        {/* Memory Stats Row */}
+        <MemoryStats stats={stats} />
 
-          {/* Right Column - Stats */}
-          <div className="md:col-span-6 grid gap-3">
-            {/* Top Row - Operation Stats */}
-            <div className="grid grid-cols-2 gap-3">
-              <OperationsStats
-                stats={stats}
-                type="recall"
-                className="h-[180px]"
-              />
-              <OperationsStats
-                stats={stats}
-                type="compression"
-                className="h-[180px]"
-              />
-            </div>
-
-            {/* Middle Row - More Stats */}
-            <div className="grid grid-cols-2 gap-3">
-              <OperationsStats
-                stats={stats}
-                type="merges"
-                className="h-[180px]"
-              />
-              <NexusPoints
-                stats={stats}
-                className="h-[180px]"
-              />
-            </div>
-          </div>
+        {/* Operations and Nexus Points Row */}
+        <div className="grid gap-3 md:grid-cols-2">
+          <OperationsStats
+            stats={stats}
+            className="h-[300px]"
+          />
+          <NexusPoints
+            stats={stats}
+            className="h-[300px]"
+          />
         </div>
 
-        {/* Event Log Row */}
-        <div className="h-[300px]">
+        {/* Generations and Event Log Row */}
+        <div className="grid gap-3 md:grid-cols-2">
+          <GenerationsView
+            stats={stats}
+            className="h-[300px]"
+          />
           <EventLog
             logs={recentLogs}
-            className="h-full"
+            className="h-[300px]"
           />
         </div>
       </div>

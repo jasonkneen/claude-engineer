@@ -80,7 +80,7 @@ export function GenerationsView({ stats, className }: StatsComponentProps) {
                 <div className="text-center">
                   <div className="text-4xl font-bold text-purple-500">
                     {stats.generations}
-                    <div className="text-sm text-muted-foreground mt-1">generations</div>
+                    <div className="text-sm text-muted-foreground mt-1">Generations</div>
                   </div>
                 </div>
               </div>
