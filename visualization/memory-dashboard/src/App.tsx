@@ -88,29 +88,51 @@ function App() {
           </div>
         </div>
 
-        {/* Memory Stats */}
-        <MemoryStats stats={stats} />
+        {/* Main Dashboard Grid */}
+        <div className="grid gap-3 md:grid-cols-12">
+          {/* Left Column - Memory Generation Chart */}
+          <div className="md:col-span-6">
+            <GenerationsView
+              stats={stats}
+              className="h-[400px]"
+            />
+          </div>
 
-        {/* Operations, Generations, and Nexus Points */}
-        <div className="grid gap-3 md:grid-cols-3">
-          <OperationsStats 
-            stats={stats} 
-            className="h-[300px]"
-          />
-          <GenerationsView 
-            stats={stats} 
-            className="h-[300px]"
-          />
-          <NexusPoints 
-            stats={stats} 
-            className="h-[300px]"
-          />
+          {/* Right Column - Stats */}
+          <div className="md:col-span-6 grid gap-3">
+            {/* Top Row - Operation Stats */}
+            <div className="grid grid-cols-2 gap-3">
+              <OperationsStats
+                stats={stats}
+                type="recall"
+                className="h-[180px]"
+              />
+              <OperationsStats
+                stats={stats}
+                type="compression"
+                className="h-[180px]"
+              />
+            </div>
+
+            {/* Middle Row - More Stats */}
+            <div className="grid grid-cols-2 gap-3">
+              <OperationsStats
+                stats={stats}
+                type="merges"
+                className="h-[180px]"
+              />
+              <NexusPoints
+                stats={stats}
+                className="h-[180px]"
+              />
+            </div>
+          </div>
         </div>
 
-        {/* Event Log */}
-        <div className="flex-1">
-          <EventLog 
-            logs={recentLogs} 
+        {/* Event Log Row */}
+        <div className="h-[300px]">
+          <EventLog
+            logs={recentLogs}
             className="h-full"
           />
         </div>

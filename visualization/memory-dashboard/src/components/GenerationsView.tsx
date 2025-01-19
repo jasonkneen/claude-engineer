@@ -3,7 +3,7 @@ import { StatsComponentProps } from "../types/memory";
 
 export function GenerationsView({ stats, className }: StatsComponentProps) {
   const chartSize = 180;
-  const strokeWidth = 20;
+  const strokeWidth = 30;
   const radius = (chartSize - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
@@ -78,10 +78,10 @@ export function GenerationsView({ stats, className }: StatsComponentProps) {
               </svg>
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
-                  <div className="text-4xl font-bold text-purple-500/80">
+                  <div className="text-4xl font-bold text-purple-500">
                     {stats.generations}
+                    <div className="text-sm text-muted-foreground mt-1">generations</div>
                   </div>
-                  <div className="text-sm text-muted-foreground">generations</div>
                 </div>
               </div>
             </div>
