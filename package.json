@@ -1,0 +1,12 @@
+{
+  "name": "ce3-node",
+  "version": "1.0.0",
+  "description": "Node.js wrapper for ce3.py",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "python-shell": "^3.0.1"
+  }
+}

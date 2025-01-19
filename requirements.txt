@@ -1,4 +1,4 @@
-flask==3.0.0
+flask>=3.0.3
 anthropic>=0.18.1
 beautifulsoup4>=4.12.3
 markdownify>=0.14.1
@@ -13,3 +13,7 @@ validators>=0.22.0
 werkzeug>=3.0.1
 prompt-toolkit>=3.0.43
 matplotlib>=3.9.2
+psutil>=5.9.5
+transformers>=4.36.2
+torch>=2.1.2
+faiss-cpu>=1.7.4

@@ -24,3 +24,11 @@ class BaseTool(ABC):
     def execute(self, **kwargs) -> str:
         """Execute the tool with given parameters"""
         pass
+
+    def to_dict(self) -> Dict:
+        """Convert tool properties to a dictionary format for Claude-3 API"""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "input_schema": self.input_schema,
+        }

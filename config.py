@@ -19,3 +19,7 @@ class Config:
     ENABLE_THINKING = True
     SHOW_TOOL_USAGE = True
     DEFAULT_TEMPERATURE = 0.7
+
+    # Logging Configuration
+    DEBUG_MODE = False
+    PANEL_MODE = True

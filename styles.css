@@ -1,0 +1,59 @@
+:root {
+/* Light theme variables */
+--panel-bg-light: rgba(240, 240, 240, 0.5);
+--debug-color-light: #707070;
+--error-color-light: #d32f2f;
+--warn-color-light: #ed6c02;
+
+/* Dark theme variables */
+--panel-bg-dark: rgba(50, 50, 50, 0.3);
+--debug-color-dark: #a0a0a0;
+--error-color-dark: #f44336;
+--warn-color-dark: #ffa726;
+}
+
+/* Panel styling */
+.panel {
+padding: 12px;
+border-radius: 4px;
+margin: 8px 0;
+}
+
+.panel-background {
+background-color: var(--panel-bg-light);
+}
+
+/* Log level styling */
+.log-debug {
+color: var(--debug-color-light);
+}
+
+.log-error {
+color: var(--error-color-light);
+font-weight: 500;
+}
+
+.log-warn {
+color: var(--warn-color-light);
+font-weight: 500;
+}
+
+/* Dark theme overrides */
+@media (prefers-color-scheme: dark) {
+.panel-background {
+    background-color: var(--panel-bg-dark);
+}
+
+.log-debug {
+    color: var(--debug-color-dark);
+}
+
+.log-error {
+    color: var(--error-color-dark);
+}
+
+.log-warn {
+    color: var(--warn-color-dark);
+}
+}
+

@@ -1,31 +1,122 @@
 #!/usr/bin/env python3
-# ce3.py
-import anthropic
-from rich.console import Console
-from rich.markdown import Markdown
-from rich.live import Live
-from rich.spinner import Spinner
-from rich.panel import Panel
-from typing import List, Dict, Any
-import importlib
-import inspect
-import pkgutil
-import os
-import json
-import sys
-import logging
+# ce3 combined from ce3_OLD and ce3 (2d changes), with correct indentation and no syntax errors
 
+# Standard Library
+import io
+import json
+import logging
+import os
+import re
+import sys
+import importlib
+import pkgutil
+import inspect
+
+# Third-Party Libraries
+import anthropic
+import psutil
+from rich.console import Console
+from rich.live import Live
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.rule import Rule
+from rich.spinner import Spinner
+from rich.table import Table
+from dataclasses import dataclass
+from typing import List, Dict, Any, Optional, Type
+
+# Local Imports
 from config import Config
-from tools.base import BaseTool
+from ce3events import CE3EventHandler
+from log_colors import ColorFormatter
 from prompt_toolkit import prompt
 from prompt_toolkit.styles import Style
 from prompts.system_prompts import SystemPrompts
+from tools.base import BaseTool
 
-# Configure logging to only show ERROR level and above
-logging.basicConfig(
-    level=logging.ERROR,
-    format='%(levelname)s: %(message)s'
-)
+# Configure stdout encoding
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+HELP_TEXT = """
+# CE3 Help
+
+## Commands
+- refresh : reload tools
+- reset   : clear conversation
+- quit    : exit
+- help    : this help text
+
+## Tool Chains
+Use 'use X then Y' or 'chain X to Y' to chain tools.
+"""
+
+# Define role constants used in conversation
+ROLE_USER = "user"
+ROLE_ASSISTANT = "assistant"
+
+
+@dataclass
+class ToolChainStep:
+    tool: Any
+    args: Dict[str, Any]
+    next_step: Optional["ToolChainStep"] = None
+
+
+class ToolChainManager:
+    """Manages dynamic tool chaining and execution"""
+
+    def __init__(self):
+        self.tools = {}
+        self._chain_patterns = [
+            (r"use (?:tool )?(.+?) then (.+)", self._parse_sequence),
+            (r"chain (?:tool )?(.+?) to (.+)", self._parse_sequence),
+            (r"after using (.+?) use (.+)", self._parse_sequence),
+        ]
+
+    def register_tool(self, tool_instance):
+        """Register a tool with the chain manager"""
+        self.tools[tool_instance.name] = tool_instance
+
+    def parse_chain_command(self, command: str) -> Optional[ToolChainStep]:
+        """Parse natural language command into tool chain"""
+        for pattern, parser in self._chain_patterns:
+            match = re.match(pattern, command, re.IGNORECASE)
+            if match:
+                return parser(*match.groups())
+        return None
+
+    def _parse_sequence(self, first_tool, remaining) -> Optional[ToolChainStep]:
+        """Parse a sequence of tool commands"""
+        items = [first_tool] + [x.strip() for x in remaining.split("then")]
+        chain = None
+        current = None
+        for tool_name in items:
+            if tool_name in self.tools:
+                step = ToolChainStep(self.tools[tool_name], {})
+                if chain is None:
+                    chain = step
+                    current = step
+                else:
+                    current.next_step = step
+                    current = step
+        return chain
+
+    def execute_chain(self, initial_context: Dict) -> Dict:
+        """Execute a chain of tools"""
+        context = initial_context
+        current_step = initial_context.get("_chain")
+        while current_step:
+            if hasattr(current_step.tool, "pre_completion"):
+                context = current_step.tool.pre_completion(context)
+            current_step = current_step.next_step
+        return context
+
+
+# Logging
+log_level = logging.DEBUG if Config.DEBUG_MODE else logging.INFO
+logging.basicConfig(level=log_level, format="%(message)s")
+logging.getLogger().handlers[0].setFormatter(ColorFormatter())
+
 
 class Assistant:
     """
@@ -51,38 +142,45 @@ class Assistant:
         self.temperature = getattr(Config, 'DEFAULT_TEMPERATURE', 0.7)
         self.total_tokens_used = 0
 
-        self.tools = self._load_tools()
+        # tools, interceptors, chain manager
+        self.tools = []  # self._load_tools()
+        self.interceptors = []  # self._load_interceptors()
+        self.tool_chain_manager = ToolChainManager()
 
-    def _execute_uv_install(self, package_name: str) -> bool:
-        """
-        Execute the uvpackagemanager tool directly to install the missing package.
-        Returns True if installation seems successful (no errors in output), otherwise False.
-        """
-        class ToolUseMock:
-            name = "uvpackagemanager"
-            input = {
-                "command": "install",
-                "packages": [package_name]
-            }
+        # process monitor
+        self.process = psutil.Process(os.getpid())
 
-        result = self._execute_tool(ToolUseMock())
-        if "Error" not in result and "failed" not in result.lower():
-            self.console.print("[green]The package was installed successfully.[/green]")
-            return True
-        else:
-            self.console.print(f"[red]Failed to install {package_name}. Output:[/red] {result}")
-            return False
+        # register all tools
+        for tool in self.tools:
+            self.tool_chain_manager.register_tool(tool)
 
-    def _load_tools(self) -> List[Dict[str, Any]]:
-        """
-        Dynamically load all tool classes from the tools directory.
-        If a dependency is missing, prompt the user to install it via uvpackagemanager.
-        
-        Returns:
-            A list of tools (dicts) containing their 'name', 'description', and 'input_schema'.
-        """
+        # event handler
+        self.event_handler = CE3EventHandler()
+
+    def _load_interceptors(self) -> List[Any]:
+        """Load context interceptors from tools dir"""
+        interceptors = []
+        tools_dir = os.getenv(
+            "CE3_TOOLS_DIR", os.path.join(os.path.dirname(__file__), "tools")
+        )
+        for _, name, _ in pkgutil.iter_modules([tools_dir]):
+            try:
+                module = importlib.import_module(f"tools.{name}")
+                for _, obj in inspect.getmembers(module):
+                    if inspect.isclass(obj) and hasattr(obj, "intercept_context"):
+                        interceptors.append(obj())
+            except ImportError as e:
+                logging.error(f"Import error loading interceptor {name}: {str(e)}")
+            except AttributeError as e:
+                logging.error(f"Attribute error in interceptor {name}: {str(e)}")
+            except Exception as e:
+                logging.error(f"Unexpected error loading interceptor {name}: {str(e)}")
+        return interceptors
+
+    def _load_tools(self) -> List[BaseTool]:
+        """Load all tool classes from tools dir, handle missing deps"""
         tools = []
-        tools_path = getattr(Config, 'TOOLS_DIR', None)
+        tools_path = os.path.join(os.path.dirname(__file__), "tools")
 
         if tools_path is None:
             self.console.print("[red]TOOLS_DIR not set in Config[/red]")
@@ -90,151 +188,172 @@ class Assistant:
 
         # Clear cached tool modules for fresh import
         for module_name in list(sys.modules.keys()):
-            if module_name.startswith('tools.') and module_name != 'tools.base':
+            if module_name.startswith("tools.") and module_name != "tools.base":
                 del sys.modules[module_name]
 
-        try:
-            for module_info in pkgutil.iter_modules([str(tools_path)]):
-                if module_info.name == 'base':
-                    continue
-
-                # Attempt loading the tool module
-                try:
-                    module = importlib.import_module(f'tools.{module_info.name}')
-                    self._extract_tools_from_module(module, tools)
-                except ImportError as e:
-                    # Handle missing dependencies
-                    missing_module = self._parse_missing_dependency(str(e))
-                    self.console.print(f"\n[yellow]Missing dependency:[/yellow] {missing_module} for tool {module_info.name}")
-                    user_response = input(f"Would you like to install {missing_module}? (y/n): ").lower()
-
-                    if user_response == 'y':
-                        success = self._execute_uv_install(missing_module)
-                        if success:
-                            # Retry loading the module after installation
-                            try:
-                                module = importlib.import_module(f'tools.{module_info.name}')
-                                self._extract_tools_from_module(module, tools)
-                            except Exception as retry_err:
-                                self.console.print(f"[red]Failed to load tool after installation: {str(retry_err)}[/red]")
-                        else:
-                            self.console.print(f"[red]Installation of {missing_module} failed. Skipping this tool.[/red]")
+        for mod_info in pkgutil.iter_modules([str(tools_path)]):
+            if mod_info.name == "base":
+                continue
+            try:
+                module = importlib.import_module(f"tools.{mod_info.name}")
+                self._extract_tools_from_module(module, tools)
+            except ImportError as e:
+                missing = self._parse_missing_dependency(str(e))
+                self.console.print(
+                    f"\n[yellow]Missing dependency:[/yellow] {missing} for tool {mod_info.name}"
+                )
+                answer = input(f"Install {missing}? (y/n): ").lower()
+                if answer == "y":
+                    if self._execute_uv_install(missing):
+                        # retry
+                        try:
+                            module = importlib.import_module(f"tools.{mod_info.name}")
+                            self._extract_tools_from_module(module, tools)
+                        except Exception as re2:
+                            self.console.print(
+                                f"[red]Failed after install: {str(re2)}[/red]"
+                            )
                     else:
-                        self.console.print(f"[yellow]Skipping tool {module_info.name} due to missing dependency[/yellow]")
-                except Exception as mod_err:
-                    self.console.print(f"[red]Error loading module {module_info.name}:[/red] {str(mod_err)}")
-        except Exception as overall_err:
-            self.console.print(f"[red]Error in tool loading process:[/red] {str(overall_err)}")
-
+                        self.console.print(f"[red]Install of {missing} failed[/red]")
+                else:
+                    self.console.print(f"[yellow]Skipping {mod_info.name}[/yellow]")
+            except Exception as exc:
+                self.console.print(
+                    f"[red]Error loading module {mod_info.name}: {str(exc)}[/red]"
+                )
         return tools
 
-    def _parse_missing_dependency(self, error_str: str) -> str:
-        """
-        Parse the missing dependency name from an ImportError string.
-        """
-        if "No module named" in error_str:
-            parts = error_str.split("No module named")
-            missing_module = parts[-1].strip(" '\"")
+    def _parse_missing_dependency(self, err: str) -> str:
+        if "No module named" in err:
+            parts = err.split("No module named")
+            return parts[-1].strip(" '\"")
         else:
-            missing_module = error_str
-        return missing_module
+            return err
 
-    def _extract_tools_from_module(self, module, tools: List[Dict[str, Any]]) -> None:
-        """
-        Given a tool module, find and instantiate all tool classes (subclasses of BaseTool).
-        Append them to the 'tools' list.
-        """
+    def _execute_uv_install(self, package: str) -> bool:
+        """Directly call uvpackagemanager to install package"""
+
+        class MockUse:
+            name = "uvpackagemanager"
+            input = {"command": "install", "packages": [package]}
+
+        result = self._execute_tool(MockUse())
+        if "Error" not in result and "failed" not in result.lower():
+            self.console.print("[green]Installed successfully[/green]")
+            return True
+        else:
+            self.console.print("[red]Installation failed[/red]")
+            return False
+
+    def _extract_tools_from_module(self, module, tool_list: List[BaseTool]) -> None:
         for name, obj in inspect.getmembers(module):
-            if (inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool):
+            if inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool:
                 try:
-                    tool_instance = obj()
-                    tools.append({
-                        "name": tool_instance.name,
-                        "description": tool_instance.description,
-                        "input_schema": tool_instance.input_schema
-                    })
-                    self.console.print(f"[green]Loaded tool:[/green] {tool_instance.name}")
-                except Exception as tool_init_err:
-                    self.console.print(f"[red]Error initializing tool {name}:[/red] {str(tool_init_err)}")
+                    instance = obj()
+                    existing = [t.name for t in tool_list]
+                    if instance.name in existing:
+                        duplicates = sum(1 for x in existing if x == instance.name)
+                        new_n = f"{instance.name}_{duplicates+1}"
+                        logging.warning(
+                            f"Duplicate tool name '{instance.name}' found, renaming to '{new_n}'"
+                        )
+                        instance.name = new_n
+                    tool_list.append(instance)
+                    self.console.print(f"[green]Loaded tool:[/green] {instance.name}")
+                except Exception as e:
+                    self.console.print(f"[red]Error init tool {name}: {str(e)}[/red]")
 
     def refresh_tools(self):
-        """
-        Refresh the list of tools and show newly discovered tools.
-        """
-        current_tool_names = {tool['name'] for tool in self.tools}
+        current_names = {t.name for t in self.tools}
         self.tools = self._load_tools()
-        new_tool_names = {tool['name'] for tool in self.tools}
-        new_tools = new_tool_names - current_tool_names
-
-        if new_tools:
+        new_names = {t.name for t in self.tools} - current_names
+        if new_names:
             self.console.print("\n")
-            for tool_name in new_tools:
-                tool_info = next((t for t in self.tools if t['name'] == tool_name), None)
-                if tool_info:
-                    description_lines = tool_info['description'].strip().split('\n')
-                    formatted_description = '\n    '.join(line.strip() for line in description_lines)
-                    self.console.print(f"[bold green]NEW[/bold green] 🔧 [cyan]{tool_name}[/cyan]:\n    {formatted_description}")
+            for n in new_names:
+                found = next((t for t in self.tools if t.name == n), None)
+                if found and hasattr(found, "description"):
+                    desc = found.description.strip().split("\n")
+                    form = "\n    ".join(x.strip() for x in desc)
+                    self.console.print(
+                        f"[bold green]NEW[/bold green] 🔧 [cyan]{n}[/cyan]:\n    {form}"
+                    )
+                else:
+                    self.console.print(
+                        f"[bold green]NEW[/bold green] 🔧 [cyan]{n}[/cyan]"
+                    )
         else:
             self.console.print("\n[yellow]No new tools found[/yellow]")
 
     def display_available_tools(self):
-        """
-        Print a list of currently loaded tools.
-        """
         self.console.print("\n[bold cyan]Available tools:[/bold cyan]")
-        tool_names = [tool['name'] for tool in self.tools]
-        if tool_names:
-            formatted_tools = ", ".join([f"🔧 [cyan]{name}[/cyan]" for name in tool_names])
+        names = [t.name for t in self.tools]
+        if names:
+            self.console.print(", ".join([f"🔧 [cyan]{nm}[/cyan]" for nm in names]))
         else:
-            formatted_tools = "No tools available."
-        self.console.print(formatted_tools)
+            self.console.print("No tools available.")
         self.console.print("\n---")
 
-    def _display_tool_usage(self, tool_name: str, input_data: Dict, result: str):
-        """
-        If SHOW_TOOL_USAGE is enabled, display the input and result of a tool execution.
-        Handles special cases like image data and large outputs for cleaner display.
-        """
-        if not getattr(Config, 'SHOW_TOOL_USAGE', False):
+    def _execute_tool(self, use):
+        """Dynamically load + run a tool"""
+        tname = use.name
+        tinput = use.input or {}
+        result = None
+        try:
+            mod = importlib.import_module(f"tools.{tname}")
+            instance = self._find_tool_instance_in_module(mod, tname)
+            if not instance:
+                result = f"Tool not found: {tname}"
+            else:
+                try:
+                    r = instance.execute(**tinput)
+                    result = r
+                except Exception as ex:
+                    result = f"Error executing tool '{tname}': {str(ex)}"
+        except ImportError:
+            result = f"Failed to import tool: {tname}"
+        except Exception as e:
+            result = f"Error executing tool: {str(e)}"
+
+        # show usage
+        self._display_tool_usage(
+            tname, tinput, json.dumps(result) if not isinstance(result, str) else result
+        )
+        return result
+
+    def _find_tool_instance_in_module(self, module, tname: str):
+        for nm, obj in inspect.getmembers(module):
+            if inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool:
+                i = obj()
+                if i.name == tname:
+                    return i
+        return None
+
+    def _display_tool_usage(self, name: str, inp: Dict, result: str):
+        if not getattr(Config, "SHOW_TOOL_USAGE", False):
             return
-
-        # Clean up input data by removing any large binary/base64 content
-        cleaned_input = self._clean_data_for_display(input_data)
-        
-        # Clean up result data
-        cleaned_result = self._clean_data_for_display(result)
-
-        tool_info = f"""[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input, indent=2)}
-[cyan]📤 Result:[/cyan] {cleaned_result}"""
-        
+        ci = self._clean_data_for_display(inp)
+        cr = self._clean_data_for_display(result)
+        content = (
+            f"[cyan]📥 Input:[/cyan] {json.dumps(ci, indent=2)}\n"
+            f"[cyan]📤 Result:[/cyan] {cr}"
+        )
         panel = Panel(
-            tool_info,
-            title=f"Tool used: {tool_name}",
-            title_align="left",
-            border_style="cyan",
-            padding=(1, 2)
+            content, title=f"Tool used: {name}", border_style="cyan", padding=(1, 2)
         )
         self.console.print(panel)
 
     def _clean_data_for_display(self, data):
-        """
-        Helper method to clean data for display by handling various data types
-        and removing/replacing large content like base64 strings.
-        """
         if isinstance(data, str):
             try:
-                # Try to parse as JSON first
-                parsed_data = json.loads(data)
-                return self._clean_parsed_data(parsed_data)
-            except json.JSONDecodeError:
-                # If it's a long string, check for base64 patterns
-                if len(data) > 1000 and ';base64,' in data:
+                parse = json.loads(data)
+                return self._clean_parsed_data(parse)
+            except:
+                if len(data) > 1000 and ";base64," in data:
                     return "[base64 data omitted]"
                 return data
         elif isinstance(data, dict):
             return self._clean_parsed_data(data)
-        else:
-            return data
+        return data
 
     def _clean_parsed_data(self, data):
         """
@@ -259,50 +378,6 @@ class Assistant:
             return "[base64 data omitted]"
         return data
 
-    def _execute_tool(self, tool_use):
-        """
-        Given a tool usage request (with tool name and inputs),
-        dynamically load and execute the corresponding tool.
-        """
-        tool_name = tool_use.name
-        tool_input = tool_use.input or {}
-        tool_result = None
-
-        try:
-            module = importlib.import_module(f'tools.{tool_name}')
-            tool_instance = self._find_tool_instance_in_module(module, tool_name)
-
-            if not tool_instance:
-                tool_result = f"Tool not found: {tool_name}"
-            else:
-                # Execute the tool with the provided input
-                try:
-                    result = tool_instance.execute(**tool_input)
-                    # Keep structured data intact
-                    tool_result = result
-                except Exception as exec_err:
-                    tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
-        except ImportError:
-            tool_result = f"Failed to import tool: {tool_name}"
-        except Exception as e:
-            tool_result = f"Error executing tool: {str(e)}"
-
-        # Display tool usage with proper handling of structured data
-        self._display_tool_usage(tool_name, tool_input, 
-            json.dumps(tool_result) if not isinstance(tool_result, str) else tool_result)
-        return tool_result
-
-    def _find_tool_instance_in_module(self, module, tool_name: str):
-        """
-        Search a given module for a tool class matching tool_name and return an instance of it.
-        """
-        for name, obj in inspect.getmembers(module):
-            if (inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool):
-                candidate_tool = obj()
-                if candidate_tool.name == tool_name:
-                    return candidate_tool
-        return None
-
     def _display_token_usage(self, usage):
         """
         Display a visual representation of token usage and remaining tokens.
@@ -316,13 +391,11 @@ class Assistant:
         bar_width = 40
         filled = int(used_percentage / 100 * bar_width)
         bar = "█" * filled + "░" * (bar_width - filled)
-
         color = "green"
         if used_percentage > 75:
             color = "yellow"
         if used_percentage > 90:
             color = "red"
-
         self.console.print(f"[{color}][{bar}] {used_percentage:.1f}%[/{color}]")
 
         if remaining_tokens < 20000:
@@ -336,6 +409,42 @@ class Assistant:
         Handles both text-only and multimodal messages.
         """
         try:
+            # build context
+            context = {
+                "conversation_history": self.conversation_history,
+                "total_tokens_used": self.total_tokens_used,
+                "tools": self.tools,
+            }
+            for interceptor in self.interceptors:
+                if hasattr(interceptor, "pre_completion"):
+                    try:
+                        context = interceptor.pre_completion(context)
+                    except ValueError as e:
+                        logging.error(
+                            f"Value error in {interceptor.__class__.__name__}: {str(e)}"
+                        )
+                    except TypeError as e:
+                        logging.error(
+                            f"Type error in {interceptor.__class__.__name__}: {str(e)}"
+                        )
+                    except Exception as e:  # Fallback for unexpected errors
+                        logging.error(
+                            f"Unexpected error in {interceptor.__class__.__name__}: {str(e)}"
+                        )
+
+            # event processing
+            processed = self.event_handler.process_context(context)
+            self.conversation_history = processed["conversation_history"]
+            self.total_tokens_used = processed["total_tokens_used"]
+
+            """  if not self.conversation_history:
+                self.conversation_history.append(
+                    {
+                        "role": ROLE_USER,
+                        "content": [{"type": "text", "text": "Hello"}],
+                    }
+                ) """
+
             response = self.client.messages.create(
                 model=Config.MODEL,
                 max_tokens=min(
@@ -365,23 +474,41 @@ class Assistant:
                 if getattr(response, 'content', None) and isinstance(response.content, list):
                     # Execute each tool in the response content
                     for content_block in response.content:
-                        if content_block.type == "tool_use":
+                        # Safely get type and id using getattr for object-style or get for dict-style
+                        block_type = (
+                            getattr(content_block, "type", None)
+                            if hasattr(content_block, "type")
+                            else content_block.get("type")
+                        )
+                        block_id = (
+                            getattr(content_block, "id", None)
+                            if hasattr(content_block, "id")
+                            else content_block.get("id")
+                        )
+
+                        if block_type == "tool_use":
                             result = self._execute_tool(content_block)
-                            
+
                             # Handle structured data (like image blocks) vs text
                             if isinstance(result, (list, dict)):
-                                tool_results.append({
-                                    "type": "tool_result",
-                                    "tool_use_id": content_block.id,
-                                    "content": result  # Keep structured data intact
-                                })
+                                tool_results.append(
+                                    {
+                                        "type": "tool_result",
+                                        "tool_use_id": block_id,
+                                        "content": result,  # Keep structured data intact
+                                    }
+                                )
                             else:
                                 # Convert text results to proper content blocks
-                                tool_results.append({
-                                    "type": "tool_result",
-                                    "tool_use_id": content_block.id,
-                                    "content": [{"type": "text", "text": str(result)}]
-                                })
+                                tool_results.append(
+                                    {
+                                        "type": "tool_result",
+                                        "tool_use_id": block_id,
+                                        "content": [
+                                            {"type": "text", "text": str(result)}
+                                        ],
+                                    }
+                                )
 
                     # Append tool usage to conversation and continue
                     self.conversation_history.append({
@@ -399,15 +526,29 @@ class Assistant:
                     return "Error: No tool content received"
 
             # Final assistant response
-            if (getattr(response, 'content', None) and 
-                isinstance(response.content, list) and 
-                response.content):
-                final_content = response.content[0].text
-                self.conversation_history.append({
-                    "role": "assistant",
-                    "content": response.content
-                })
-                return final_content
+            if (
+                getattr(response, "content", None)
+                and isinstance(response.content, list)
+                and response.content
+            ):
+                # Safely get text from the first content block
+                first_block = response.content[0]
+                final_content = (
+                    getattr(first_block, "text", None)
+                    if hasattr(first_block, "text")
+                    else first_block.get("text", "")
+                )
+
+                if final_content:
+                    self.conversation_history.append(
+                        {"role": "assistant", "content": response.content}
+                    )
+                    return final_content
+                else:
+                    self.console.print(
+                        "[red]Could not extract text from response content.[/red]"
+                    )
+                    return "Error: Could not extract response text"
             else:
                 self.console.print("[red]No content in final response.[/red]")
                 return "No response content available."
@@ -423,30 +564,65 @@ class Assistant:
         """
         # Handle special commands only for text-only messages
         if isinstance(user_input, str):
-            if user_input.lower() == 'refresh':
+            cmd = user_input.lower()
+            if cmd == "refresh":
                 self.refresh_tools()
-                return "Tools refreshed successfully!"
-            elif user_input.lower() == 'reset':
+                return None  # Command handled, no panel needed
+            elif cmd == "reset":
                 self.reset()
-                return "Conversation reset!"
-            elif user_input.lower() == 'quit':
+                return None  # Command handled, no panel needed
+            elif cmd == "quit":
                 return "Goodbye!"
+            elif cmd == "help":
+                return HELP_TEXT
 
         try:
-            # Add user message to conversation history
-            self.conversation_history.append({
-                "role": "user",
-                "content": user_input  # This can be either string or list
-            })
 
-            # Show thinking indicator if enabled
+            # Check for chain commands
+            chain = self.tool_chain_manager.parse_chain_command(user_input)
+
+            if chain:
+                ctx = {
+                    "conversation_history": self.conversation_history,
+                    "total_tokens_used": self.total_tokens_used,
+                    "tools": self.tools,
+                    "_chain": chain,
+                }
+                ctx = self.tool_chain_manager.execute_chain(ctx)
+                self.conversation_history = ctx["conversation_history"]
+                self.total_tokens_used = ctx["total_tokens_used"]
+
+                self.conversation_history.append(
+                    {
+                        "role": ROLE_USER,
+                        "content": [{"type": "text", "text": user_input}],
+                    }
+                )
+
+                if self.thinking_enabled:
+                    with Live(
+                        Spinner("dots", text="Thinking...", style="cyan"),
+                        refresh_per_second=10,
+                        transient=True,
+                    ):
+                        response = self._get_completion()
+                else:
+                    response = self._get_completion()
+                return response
+
+            # If not a chain command, just treat as normal user input
+            self.conversation_history.append(
+                {"role": ROLE_USER, "content": [{"type": "text", "text": user_input}]}
+            )
             if self.thinking_enabled:
-                with Live(Spinner('dots', text='Thinking...', style="cyan"), 
-                         refresh_per_second=10, transient=True):
+                with Live(
+                    Spinner("dots", text="Thinking...", style="cyan"),
+                    refresh_per_second=10,
+                    transient=True,
+                ):
                     response = self._get_completion()
             else:
                 response = self._get_completion()
-
             return response
 
         except Exception as e:
@@ -459,8 +635,15 @@ class Assistant:
         """
         self.conversation_history = []
         self.total_tokens_used = 0
-        self.console.print("\n[bold green]🔄 Assistant memory has been reset![/bold green]")
-
+        self.console.print(
+            Panel(
+                "[green]Assistant memory has been reset.[/green]\n"
+                + "[cyan]Conversation history cleared.[/cyan]\n"
+                + f"[yellow]Available tools: {len(self.tools)}[/yellow]",
+                title="🔄 Reset Complete",
+                border_style="green",
+            )
+        )
         welcome_text = """
 # Claude Engineer v3. A self-improving assistant framework with tool creation
 
@@ -480,7 +663,7 @@ def main():
     Provides a prompt for user input and handles 'quit' and 'reset' commands.
     """
     console = Console()
-    style = Style.from_dict({'prompt': 'orange'})
+    style = Style.from_dict({"prompt": "orange"})
 
     try:
         assistant = Assistant()
@@ -505,21 +688,31 @@ Available tools:
         try:
             user_input = prompt("You: ", style=style).strip()
 
-            if user_input.lower() == 'quit':
+            if user_input.lower() == "quit":
                 console.print("\n[bold blue]👋 Goodbye![/bold blue]")
                 break
-            elif user_input.lower() == 'reset':
+            elif user_input.lower() == "reset":
                 assistant.reset()
+                continue
+            elif user_input.lower() == "help":
+                console.print(Panel(Markdown(HELP_TEXT), title="Help"))
+                continue
+            elif user_input.lower() == "refresh":
+                assistant.refresh_tools()
+                console.print("Tools refreshed!")
                 continue
 
             response = assistant.chat(user_input)
             console.print("\n[bold purple]Claude Engineer:[/bold purple]")
             if isinstance(response, str):
-                safe_response = response.replace('[', '\\[').replace(']', '\\]')
-                console.print(safe_response)
+                safe_response = response.replace("[", "\\[").replace("]", "\\]")
+                console.print(
+                    Panel.fit(
+                        safe_response, title="🤖 Claude Engineer", border_style="blue"
+                    )
+                )
             else:
                 console.print(str(response))
-
         except KeyboardInterrupt:
             continue
         except EOFError:
