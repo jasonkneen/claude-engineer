@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Set, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from websockets.exceptions import ConnectionClosed
+from memory_manager import SignificanceType
 
 # Configure logging
 logging.basicConfig(
@@ -209,13 +210,19 @@ class MemoryBridge:
             nexus_points = self.memory_manager.get_nexus_points()
             self.stats.nexus_points["count"] = len(nexus_points)
             self.stats.nexus_points["types"]["user"] = sum(
-                1 for np in nexus_points.values() if np.significance_type == "user"
+                1
+                for np in nexus_points.values()
+                if np.significance_type == SignificanceType.USER
             )
             self.stats.nexus_points["types"]["llm"] = sum(
-                1 for np in nexus_points.values() if np.significance_type == "llm"
+                1
+                for np in nexus_points.values()
+                if np.significance_type == SignificanceType.LLM
             )
             self.stats.nexus_points["types"]["system"] = sum(
-                1 for np in nexus_points.values() if np.significance_type == "system"
+                1
+                for np in nexus_points.values()
+                if np.significance_type == SignificanceType.SYSTEM
             )
 
             # Update total stats
@@ -270,6 +277,7 @@ async def verify_connection(websocket, timeout=10):
     except Exception as e:
         logger.error(f"Connection verification failed: {e}")
         return False
+
 
 async def start_memory_bridge(memory_manager, timeout=30, max_retries=5):
     """Start and initialize the memory bridge with connection verification

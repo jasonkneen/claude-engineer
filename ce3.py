@@ -27,6 +27,9 @@ logging.basicConfig(level=logging.ERROR, format="%(levelname)s: %(message)s")
 
 class Assistant:
     def __init__(self):
+        # Initialize console first
+        self.console = Console()
+
         if not getattr(Config, "ANTHROPIC_API_KEY", None):
             raise ValueError("No ANTHROPIC_API_KEY found in environment variables")
 
@@ -48,12 +51,11 @@ class Assistant:
         # Initialize memory system with configurable limits
         self.memory_manager = MemoryManager(
             working_memory_limit=getattr(Config, "WORKING_MEMORY_LIMIT", 8192),
-            short_term_limit=getattr(Config, "SHORT_TERM_MEMORY_LIMIT", 128000),
+            archival_memory_limit=getattr(Config, "ARCHIVAL_MEMORY_LIMIT", 512000),
             similarity_threshold=getattr(Config, "MEMORY_SIMILARITY_THRESHOLD", 0.85),
-            promotion_threshold=getattr(Config, "MEMORY_PROMOTION_THRESHOLD", 5),
             cleanup_interval=getattr(Config, "MEMORY_CLEANUP_INTERVAL", 1000),
-            memory_client=self.memory_client,
-            stats_callback=self._broadcast_memory_stats
+            memory_server_client=self.memory_client,
+            stats_callback=self._broadcast_memory_stats,
         )
 
         # Memory tracking
@@ -66,7 +68,6 @@ class Assistant:
 
         # Anthropic settings
         self.conversation_history: List[Dict[str, Any]] = []
-        self.console = Console()
         self.thinking_enabled = getattr(Config, "ENABLE_THINKING", False)
         self.temperature = getattr(Config, "DEFAULT_TEMPERATURE", 0.7)
         self.total_tokens_used = 0
@@ -74,105 +75,11 @@ class Assistant:
         # Load tools
         self.tools = self._load_tools()
 
-    def _load_tools(self) -> List[Dict[str, Any]]:
-        """Dynamically load all tool classes from the tools directory."""
-        tools = []
-        tools_path = getattr(Config, "TOOLS_DIR", None)
-
-        if tools_path is None:
-            self.console.print("[red]TOOLS_DIR not set in Config[/red]")
-            return tools
-
-        # Clear cached tool modules for fresh import
-        for module_name in list(sys.modules.keys()):
-            if module_name.startswith("tools.") and module_name != "tools.base":
-                del sys.modules[module_name]
-
-        try:
-            for module_info in pkgutil.iter_modules([str(tools_path)]):
-                if module_info.name in [
-                    "base",
-                    "text_processor",
-                    "text_analyzer",
-                ]:  # Skip problematic modules
-                    continue
-
-                try:
-                    module = importlib.import_module(f"tools.{module_info.name}")
-                    self._extract_tools_from_module(module, tools)
-                except ImportError:
-                    continue  # Skip tools with missing dependencies
-                except Exception as mod_err:
-                    self.console.print(
-                        f"[red]Error loading module {module_info.name}:[/red] {str(mod_err)}"
-                    )
-        except Exception as overall_err:
-            self.console.print(
-                f"[red]Error in tool loading process:[/red] {str(overall_err)}"
-            )
-
-        return tools
-
-    def _extract_tools_from_module(self, module, tools: List[Dict[str, Any]]) -> None:
-        """Extract and instantiate all tool classes from a module."""
-        for name, obj in inspect.getmembers(module):
-            if inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool:
-                try:
-                    tool_instance = obj()
-                    tools.append(
-                        {
-                            "name": tool_instance.name,
-                            "description": tool_instance.description,
-                            "input_schema": tool_instance.input_schema,
-                        }
-                    )
-                    self.console.print(
-                        f"[green]Loaded tool:[/green] {tool_instance.name}"
-                    )
-                except Exception as tool_init_err:
-                    self.console.print(
-                        f"[red]Error initializing tool {name}:[/red] {str(tool_init_err)}"
-                    )
-
-    def refresh_tools(self):
-        """Refresh the list of tools and show newly discovered tools."""
-        current_tool_names = {tool["name"] for tool in self.tools}
-        self.tools = self._load_tools()
-        new_tool_names = {tool["name"] for tool in self.tools}
-        new_tools = new_tool_names - current_tool_names
-
-        if new_tools:
-            self.console.print("\n")
-            for tool_name in new_tools:
-                tool_info = next(
-                    (t for t in self.tools if t["name"] == tool_name), None
-                )
-                if tool_info:
-                    description_lines = tool_info["description"].strip().split("\n")
-                    formatted_description = "\n    ".join(
-                        line.strip() for line in description_lines
-                    )
-                    self.console.print(
-                        f"[bold green]NEW[/bold green] 🔧 [cyan]{tool_name}[/cyan]:\n    {formatted_description}"
-                    )
-        else:
-            self.console.print("\n[yellow]No new tools found[/yellow]")
-
-    def display_available_tools(self):
-        """Print a list of currently loaded tools."""
-        self.console.print("\n[bold cyan]Available tools:[/bold cyan]")
-        tool_names = [tool["name"] for tool in self.tools]
-        if tool_names:
-            formatted_tools = ", ".join(
-                [f"🔧 [cyan]{name}[/cyan]" for name in tool_names]
-            )
-        else:
-            formatted_tools = "No tools available."
-        self.console.print(formatted_tools)
-        self.console.print("\n---")
-
     def _broadcast_memory_stats(self, stats):
         """Handle memory stats updates and broadcast to all interfaces"""
+        if not stats:
+            return
+
         # Update web interface if memory client is available
         if self.memory_client:
             self.memory_client.broadcast_stats(stats)
@@ -183,11 +90,11 @@ class Assistant:
     def _display_cli_stats(self, stats):
         """Display memory system statistics in CLI"""
         if not stats:
-            stats = self.memory_manager.get_memory_stats()
+            return
 
         # Memory pools section
         pools_text = []
-        for pool_name, pool_data in stats["pools"].items():
+        for pool_name, pool_data in stats.get("pools", {}).items():
             utilization = pool_data.get("utilization", 0)
             color = "green"
             if utilization > 0.75:
@@ -195,7 +102,7 @@ class Assistant:
             if utilization > 0.90:
                 color = "red"
 
-            pool_info = f"{pool_name.replace('_', ' ').title()}: {pool_data['count']} blocks, {pool_data['size']:,} tokens"
+            pool_info = f"{pool_name.replace('_', ' ').title()}: {pool_data.get('count', 0)} blocks, {pool_data.get('size', 0):,} tokens"
             if "utilization" in pool_data:
                 pool_info += (
                     f" ([{color}]{pool_data['utilization']*100:.1f}%[/{color}])"
@@ -203,27 +110,27 @@ class Assistant:
             pools_text.append(pool_info)
 
         # Operations section
+        ops = stats.get("operations", {})
         ops_text = [
-            f"Generations: {stats['operations']['generations']:,}",
-            f"Promotions: {stats['operations']['promotions']:,}",
-            f"Demotions: {stats['operations']['demotions']:,}",
-            f"Merges: {stats['operations']['merges']:,}",
-            f"Retrievals: {stats['operations']['retrievals']:,}",
+            f"Generations: {stats.get('generations', 0):,}",
+            f"Promotions: {ops.get('promotions', 0):,}",
+            f"Demotions: {ops.get('demotions', 0):,}",
+            f"Merges: {ops.get('merges', 0):,}",
+            f"Retrievals: {ops.get('retrievals', 0):,}",
         ]
 
         # Nexus points section
+        nexus = stats.get("nexus_points", {})
         nexus_text = [
-            f"Total: {stats['nexus_points']['count']:,}",
+            f"Total: {nexus.get('count', 0):,}",
             "Types: "
-            + ", ".join(
-                f"{k}: {v:,}" for k, v in stats["nexus_points"]["types"].items()
-            ),
+            + ", ".join(f"{k}: {v:,}" for k, v in nexus.get("types", {}).items()),
         ]
 
         # Performance section
         perf_text = [
-            f"Total Tokens: {stats['total_tokens']:,}",
-            f"Last Recall: {stats['last_recall_time_ms']:.2f}ms",
+            f"Total Tokens: {stats.get('total_tokens', 0):,}",
+            f"Last Recall: {ops.get('avg_recall_time', 0):.2f}ms",
         ]
 
         # Create panels
@@ -272,6 +179,88 @@ class Assistant:
 
         panel = Panel("\n".join(usage_text), title="Token Usage", border_style="blue")
         self.console.print(panel)
+
+    def _load_tools(self):
+        """Dynamically load all tool classes from the tools directory."""
+        tools = []
+        tools_path = getattr(Config, "TOOLS_DIR", None)
+
+        if tools_path is None:
+            self.console.print("[red]TOOLS_DIR not set in Config[/red]")
+            return tools
+
+        try:
+            for module_info in pkgutil.iter_modules([str(tools_path)]):
+                if module_info.name in ["base", "text_processor", "text_analyzer"]:
+                    continue
+
+                try:
+                    module = importlib.import_module(f"tools.{module_info.name}")
+                    self._extract_tools_from_module(module, tools)
+                except ImportError:
+                    continue
+                except Exception as mod_err:
+                    self.console.print(
+                        f"[red]Error loading module {module_info.name}:[/red] {str(mod_err)}"
+                    )
+        except Exception as overall_err:
+            self.console.print(
+                f"[red]Error in tool loading process:[/red] {str(overall_err)}"
+            )
+
+        return tools
+
+    def _extract_tools_from_module(self, module, tools: List[Dict[str, Any]]) -> None:
+        """Extract and instantiate all tool classes from a module."""
+        for name, obj in inspect.getmembers(module):
+            if inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool:
+                try:
+                    tool_instance = obj()
+                    tools.append(tool_instance.to_dict())
+                    self.console.print(
+                        f"[green]Loaded tool:[/green] {tool_instance.name}"
+                    )
+                except Exception as tool_init_err:
+                    self.console.print(
+                        f"[red]Error initializing tool {name}:[/red] {str(tool_init_err)}"
+                    )
+
+    def refresh_tools(self):
+        """Refresh the list of tools and show newly discovered tools."""
+        current_tool_names = {tool["name"] for tool in self.tools}
+        self.tools = self._load_tools()
+        new_tool_names = {tool["name"] for tool in self.tools}
+        new_tools = new_tool_names - current_tool_names
+
+        if new_tools:
+            self.console.print("\n")
+            for tool_name in new_tools:
+                tool_info = next(
+                    (t for t in self.tools if t["name"] == tool_name), None
+                )
+                if tool_info:
+                    description_lines = tool_info["description"].strip().split("\n")
+                    formatted_description = "\n    ".join(
+                        line.strip() for line in description_lines
+                    )
+                    self.console.print(
+                        f"[bold green]NEW[/bold green] 🔧 [cyan]{tool_name}[/cyan]:\n    {formatted_description}"
+                    )
+        else:
+            self.console.print("\n[yellow]No new tools found[/yellow]")
+
+    def display_available_tools(self):
+        """Print a list of currently loaded tools."""
+        self.console.print("\n[bold cyan]Available tools:[/bold cyan]")
+        tool_names = [tool["name"] for tool in self.tools]
+        if tool_names:
+            formatted_tools = ", ".join(
+                [f"🔧 [cyan]{name}[/cyan]" for name in tool_names]
+            )
+        else:
+            formatted_tools = "No tools available."
+        self.console.print(formatted_tools)
+        self.console.print("\n---")
 
     def _execute_tool(self, tool_use):
         """Execute a tool with memory integration."""
@@ -384,15 +373,47 @@ class Assistant:
         """Get a completion from the Anthropic API with memory integration."""
         try:
             # Get relevant context from memory
+            recent_messages = []
+            for msg in self.conversation_history[-3:]:
+                content = msg.get("content", "")
+                if isinstance(content, list):
+                    # Handle list of content blocks
+                    text_content = []
+                    for block in content:
+                        if isinstance(block, dict) and "text" in block:
+                            text_content.append(block["text"])
+                        elif isinstance(block, str):
+                            text_content.append(block)
+                    content = " ".join(text_content)
+                recent_messages.append(content)
+
             context_blocks = self.memory_manager.get_relevant_context(
-                " ".join(
-                    msg.get("content", "") for msg in self.conversation_history[-3:]
-                )
+                " ".join(recent_messages)
             )
 
             # Add context to system prompt
             context_text = "\n".join(block.content for block in context_blocks)
             system_prompt = f"{SystemPrompts.DEFAULT}\n\nContext:\n{context_text}\n\n{SystemPrompts.TOOL_USAGE}"
+
+            # Prepare conversation history
+            processed_history = []
+            for msg in self.conversation_history:
+                content = msg.get("content", "")
+                if isinstance(content, list):
+                    # Handle list of content blocks
+                    text_content = []
+                    for block in content:
+                        if isinstance(block, dict) and "text" in block:
+                            text_content.append(block["text"])
+                        elif isinstance(block, str):
+                            text_content.append(block)
+                    processed_msg = {
+                        "role": msg["role"],
+                        "content": " ".join(text_content),
+                    }
+                else:
+                    processed_msg = msg
+                processed_history.append(processed_msg)
 
             response = self.client.messages.create(
                 model=Config.MODEL,
@@ -402,7 +423,7 @@ class Assistant:
                 ),
                 temperature=self.temperature,
                 tools=self.tools,
-                messages=self.conversation_history,
+                messages=processed_history,
                 system=system_prompt,
             )
 
@@ -480,7 +501,7 @@ class Assistant:
             ):
                 final_content = response.content[0].text
                 self.conversation_history.append(
-                    {"role": "assistant", "content": response.content}
+                    {"role": "assistant", "content": final_content}
                 )
 
                 # Add memory block for assistant response
@@ -509,7 +530,7 @@ class Assistant:
             elif user_input.lower() == "quit":
                 return "Goodbye!"
             elif user_input.lower() == "memory":
-                self._display_memory_stats()
+                self._display_cli_stats(self.memory_manager.get_memory_stats())
                 return "Memory stats displayed above."
 
         try:
@@ -540,10 +561,12 @@ class Assistant:
         """Reset memory_manager, conversation history and stats."""
         self.memory_manager = MemoryManager(
             working_memory_limit=getattr(Config, "WORKING_MEMORY_LIMIT", 8192),
-            short_term_limit=getattr(Config, "SHORT_TERM_MEMORY_LIMIT", 128000),
+            archival_memory_limit=getattr(Config, "ARCHIVAL_MEMORY_LIMIT", 128000),
+            archive_threshold=getattr(Config, "ARCHIVE_THRESHOLD", 6000),
             similarity_threshold=getattr(Config, "MEMORY_SIMILARITY_THRESHOLD", 0.85),
-            promotion_threshold=getattr(Config, "MEMORY_PROMOTION_THRESHOLD", 5),
             cleanup_interval=getattr(Config, "MEMORY_CLEANUP_INTERVAL", 1000),
+            memory_server_client=self.memory_client,
+            stats_callback=self._broadcast_memory_stats,
         )
         self.last_recall_time = 0
         self.generation_count = 0
@@ -569,7 +592,6 @@ Available tools:
 """
         self.console.print(Markdown(welcome_text))
         self.display_available_tools()
-
 
 def main():
     """Entry point for the assistant CLI loop."""
@@ -619,7 +641,6 @@ Available tools:
             continue
         except EOFError:
             break
-
 
 if __name__ == "__main__":
     main()

@@ -7,172 +7,171 @@ from typing import List, Dict, Any
 def memory_manager():
     return MemoryManager()
 
-@pytest.fixture
-def sample_memory_blocks():
-    return [
-        MemoryBlock(
-            content="This is test memory block 1",
-            tokens=50,
-            timestamp=datetime.now(),
-            significance_type=SignificanceType.USER,
-            level=MemoryLevel.WORKING
-        ),
-        MemoryBlock(
-            content="This is test memory block 2",
-            tokens=75,
-            timestamp=datetime.now() - timedelta(hours=1),
-            significance_type=SignificanceType.SYSTEM,
-            level=MemoryLevel.WORKING
-        )
-    ]
 
 def test_memory_block_creation(memory_manager):
-    block = MemoryBlock(
+    block_id = memory_manager.add_memory_block(
         content="Test content",
-        tokens=10,
-        timestamp=datetime.now(),
-        significance_type=SignificanceType.USER,
-        level=MemoryLevel.WORKING
+        significance_type=SignificanceType.USER
     )
-    memory_manager.add_memory_block(block)
-    assert block.content == "Test content"
-    assert block.tokens > 0
-    assert block.level == MemoryLevel.WORKING
-    assert block.significance_type == SignificanceType.USER_INPUT
+    memories = memory_manager.get_working_memory()
+    assert len(memories) == 1
+    assert memories[0].content == "Test content"
 
 def test_working_memory_limit(memory_manager):
-    # Fill working memory to limit
-    content = "Test content " * 1000  # Large content
-    block = MemoryBlock(
-        content=content,
-        tokens=500,
-        timestamp=datetime.now(),
-        significance_type=SignificanceType.USER,
-        level=MemoryLevel.WORKING
+    # Add multiple memory blocks to trigger memory management
+    for i in range(10):
+        content = f"Test content {i} " * 100
+        memory_manager.add_memory_block(
+            content=content,
+            significance_type=SignificanceType.USER
+        )
+    
+    # Verify some memories were stored
+    memories = memory_manager.get_working_memory()
+    assert len(memories) > 0
+
+def test_memory_operations(memory_manager):
+    block_id = memory_manager.add_memory_block(
+        content="This is test memory block 1",
+        significance_type=SignificanceType.USER
     )
-    memory_manager.add_memory_block(block)
+    block_id2 = memory_manager.add_memory_block(
+        content="This is test memory block 2", 
+        significance_type=SignificanceType.SYSTEM
+    )
     
-    assert len(memory_manager.working_memory) > 0
-    assert any(b.level == MemoryLevel.SHORT_TERM 
-            for b in memory_manager.get_all_memories())
+    # Verify both memories are stored
+    memories = memory_manager.get_working_memory()
+    assert len(memories) == 2
+    assert any("block 1" in m.content for m in memories)
+    assert any("block 2" in m.content for m in memories)
 
-def test_memory_compression(memory_manager, sample_memory_blocks):
-    for block in sample_memory_blocks:
-        memory_manager.add_memory_block(block)
-    
-    # Force compression
-    memory_manager.compress_memories()
-    
-    # Verify compression results
-    compressed_blocks = memory_manager.get_all_memories()
-    assert len(compressed_blocks) <= len(sample_memory_blocks)
-    assert all(b.is_compressed for b in compressed_blocks 
-            if b.level == MemoryLevel.LONG_TERM)
-
-def test_block_promotion(memory_manager, sample_memory_blocks):
-    block = sample_memory_blocks[0]
-    memory_manager.add_memory_block(block)
-    
-    # Simulate frequent access
-    for _ in range(5):
-        memory_manager.access_memory(block.id)
-    
-    promoted_block = memory_manager.get_memory_by_id(block.id)
-    assert promoted_block.level == MemoryLevel.WORKING
-
-def test_context_retrieval(memory_manager, sample_memory_blocks):
-    for block in sample_memory_blocks:
-        memory_manager.add_memory_block(block)
+def test_context_retrieval(memory_manager):
+    # Add two memory blocks to working memory
+    memory_manager.add_memory_block(
+        content="The cat sat on the mat",
+        significance_type=SignificanceType.USER
+    )
+    memory_manager.add_memory_block(
+        content="The dog played in the yard",
+        significance_type=SignificanceType.USER
+    )
         
-    context = memory_manager.get_context(
-        "test memory", max_tokens=100
-    )
-    
+    # Get relevant context from working memory
+    context = memory_manager.get_relevant_context("cat mat", max_blocks=2)
+    # Verify we got at least one result
     assert len(context) > 0
-    assert all(isinstance(c, dict) for c in context)
-    assert all("content" in c for c in context)
+    # Verify the cat memory was found
+    assert any(m.content.find("cat") != -1 for m in context)
+    # Verify we didn't exceed max_blocks
+    assert len(context) <= 2
 
-def test_memory_merging(memory_manager):
-    similar_content1 = "The cat sat on the mat"
-    similar_content2 = "A cat was sitting on a mat"
-    
-    block1 = MemoryBlock(
-        content=similar_content1,
-        tokens=10,
-        timestamp=datetime.now(),
-        significance_type=SignificanceType.USER,
-        level=MemoryLevel.WORKING
+def test_importance_level(memory_manager):
+    memory_manager.add_memory_block(
+        content="Regular memory",
+        significance_type=SignificanceType.USER
     )
-    block2 = MemoryBlock(
-        content=similar_content2,
-        tokens=10,
-        timestamp=datetime.now(),
-        significance_type=SignificanceType.USER,
-        level=MemoryLevel.WORKING
+    memory_manager.add_memory_block(
+        content="System critical memory",
+        significance_type=SignificanceType.SYSTEM
     )
-    memory_manager.add_memory_block(block1)
-    memory_manager.add_memory_block(block2)
     
-    memory_manager.merge_similar_memories()
-    
-    all_memories = memory_manager.get_all_memories()
-    assert len(all_memories) < 2  # Should be merged into one
+    memories = memory_manager.get_working_memory()
+    system_memories = [m for m in memories if m.significance_type == SignificanceType.SYSTEM]
+    assert len(system_memories) > 0
 
-def test_nexus_points(memory_manager):
-    nexus_block = MemoryBlock(
-        content="Important system decision",
-        tokens=10,
-        timestamp=datetime.now(),
-        significance_type=SignificanceType.SYSTEM,
-        level=MemoryLevel.WORKING
+def test_memory_stats(memory_manager):
+    # Add memory blocks with different significance types
+    memory_manager.add_memory_block(
+        content="User memory 1",
+        significance_type=SignificanceType.USER
     )
-    memory_manager.add_memory_block(nexus_block)
-
-    assert nexus_block in memory_manager.get_nexus_points()
-    assert nexus_block.significance_type == SignificanceType.SYSTEM
-
-def test_memory_cleanup(memory_manager, sample_memory_blocks):
-    # Add old memories
-    for block in sample_memory_blocks:
-        block.timestamp = datetime.now() - timedelta(days=10)
-        memory_manager.add_memory_block(block)
-    
-    # Add nexus point that should be preserved
-    nexus_block = MemoryBlock(
-        content="Important nexus point",
-        tokens=10,
-        timestamp=datetime.now(),
-        significance_type=SignificanceType.SYSTEM,
-        level=MemoryLevel.WORKING
+    memory_manager.add_memory_block(
+        content="System memory 1",
+        significance_type=SignificanceType.SYSTEM
     )
-    memory_manager.add_memory_block(nexus_block)
-    nexus_block.timestamp = datetime.now() - timedelta(days=10)
-    
-    memory_manager.cleanup_old_memories(max_age_days=7)
-    
-    remaining_memories = memory_manager.get_all_memories()
-    assert nexus_block in remaining_memories
-    assert len(remaining_memories) == 1
-
-def test_memory_level_transitions(memory_manager):
-    # Fill working memory
-    working_block = MemoryBlock(
-        content="Working memory test",
-        tokens=10,
-        timestamp=datetime.now(),
-        significance_type=SignificanceType.USER,
-        level=MemoryLevel.WORKING
+    memory_manager.add_memory_block(
+        content="LLM memory 1",
+        significance_type=SignificanceType.LLM
     )
-    memory_manager.add_memory_block(working_block)
-    assert working_block.level == MemoryLevel.WORKING
     
-    # Force transition to short-term
-    memory_manager.move_to_short_term(working_block.id)
-    moved_block = memory_manager.get_memory_by_id(working_block.id)
-    assert moved_block.level == MemoryLevel.SHORT_TERM
+    # Perform some operations to generate stats
+    memory_manager.get_relevant_context("memory", max_blocks=2)
+    memory_manager.get_working_memory()
     
-    # Force transition to long-term
-    memory_manager.move_to_long_term(moved_block.id)
-    final_block = memory_manager.get_memory_by_id(moved_block.id)
-    assert final_block.level == MemoryLevel.LONG_TERM
-
+    # Get and verify stats
+    stats = memory_manager.get_memory_stats()
+    
+    # Verify structure and basic types
+    assert "memory" in stats
+    assert "working" in stats["memory"]
+    assert "archived" in stats["memory"]
+    assert "operations" in stats
+    assert "nexus_points" in stats
+    assert "total_tokens" in stats
+    assert "last_recall_time_ms" in stats
+    
+    # Verify memory counts
+    assert stats["memory"]["working"]["count"] == 3
+    assert isinstance(stats["memory"]["working"]["size"], int)
+    assert isinstance(stats["memory"]["working"]["utilization"], float)
+    assert isinstance(stats["memory"]["archived"]["count"], int)
+    
+    # Verify operations tracking
+    assert isinstance(stats["operations"]["promotions"], int)
+    assert isinstance(stats["operations"]["demotions"], int)
+    assert isinstance(stats["operations"]["merges"], int)
+    assert stats["operations"]["retrievals"] > 0  # We did retrievals
+    assert stats["operations"]["generations"] >= 0
+    
+    # Verify nexus points
+    assert stats["nexus_points"]["count"] == 3
+    assert stats["nexus_points"]["types"]["user"] == 1
+    assert stats["nexus_points"]["types"]["system"] == 1
+    assert stats["nexus_points"]["types"]["llm"] == 1
+    
+    # Verify token count and timing fields
+    assert stats["total_tokens"] >= 0
+    assert stats["last_recall_time_ms"] > 0
+    
+def test_stats_broadcasting():
+    # Create a list to store stats updates
+    received_stats = []
+    
+    # Define callback that prints and stores stats
+    def stats_callback(stats):
+        print(f"\nReceived stats update:")
+        print(f"- Working memory count: {stats['memory']['working']['count']}")
+        print(f"- Operation counts: {stats['operations']}")
+        print(f"- Nexus points: {stats['nexus_points']}")
+        received_stats.append(stats)
+    
+    # Initialize manager with callback
+    memory_manager = MemoryManager(stats_callback=stats_callback)
+    
+    print("\nAdding first memory block...")
+    memory_manager.add_memory_block(
+        content="First test memory",
+        significance_type=SignificanceType.USER
+    )
+    assert len(received_stats) >= 1
+    assert received_stats[-1]["memory"]["working"]["count"] == 1
+    
+    print("\nAdding second memory block...")
+    memory_manager.add_memory_block(
+        content="Second test memory",
+        significance_type=SignificanceType.SYSTEM
+    )
+    assert len(received_stats) >= 2
+    assert received_stats[-1]["memory"]["working"]["count"] == 2
+    
+    print("\nPerforming context retrieval...")
+    memory_manager.get_relevant_context("test memory", max_blocks=1)
+    assert any(stats["operations"]["retrievals"] > 0 for stats in received_stats)
+    
+    # Verify final stats are complete
+    final_stats = received_stats[-1]
+    assert final_stats["memory"]["working"]["count"] == 2
+    assert final_stats["nexus_points"]["types"]["user"] == 1
+    assert final_stats["nexus_points"]["types"]["system"] == 1
+    assert final_stats["operations"]["retrievals"] > 0

@@ -9,7 +9,8 @@ def memory_manager():
     """Create a memory manager with small limits for testing"""
     return MemoryManager(
         working_memory_limit=500,  # Very small limit for quick testing
-        short_term_limit=1000,
+        archival_memory_limit=1000,  # Renamed from short_term_limit
+        archive_threshold=400,  # Added archive threshold
         similarity_threshold=0.5,  # More lenient for simple embeddings
     )
 
@@ -25,8 +26,8 @@ def generate_test_message(size: int = 50) -> str:
 
 def test_memory_block_creation(memory_manager):
     """Test basic memory block creation and W3W token generation"""
-    content = {"role": "user", "content": "Test message"}
-    block_id = memory_manager.add_memory(content)
+    content = "Test message"
+    block_id = memory_manager.add_memory_block(content, SignificanceType.USER)
 
     # Verify block was created in working memory
     assert len(memory_manager.working_memory) == 1
@@ -45,74 +46,71 @@ def test_working_memory_compression(memory_manager):
     messages_added = 0
 
     while total_size < memory_manager.working_memory_limit:
-        content = {"role": "user", "content": generate_test_message(50)}
-        memory_manager.add_memory(content)
-        total_size = memory_manager.stats["working_memory_size"]
+        content = generate_test_message(50)
+        memory_manager.add_memory_block(content, SignificanceType.USER)
+        stats = memory_manager.get_memory_stats()
+        total_size = stats["pools"]["working"]["size"]
         messages_added += 1
 
     # Add one more to trigger compression
-    memory_manager.add_memory({"role": "user", "content": generate_test_message(50)})
+    memory_manager.add_memory_block(generate_test_message(50), SignificanceType.USER)
 
     # Verify some content moved to short-term memory
-    assert (
-        memory_manager.stats["working_memory_size"]
-        < memory_manager.working_memory_limit
-    )
+    stats = memory_manager.get_memory_stats()
+    assert stats["pools"]["working"]["size"] < memory_manager.working_memory_limit
     assert len(memory_manager.short_term_memory) > 0
-    assert memory_manager.stats["demotions"] > 0
+    assert stats["operations"]["demotions"] > 0
 
 
 def test_short_term_archival(memory_manager):
     """Test that short term memory archives to long term when limit reached"""
     # Fill working memory first
-    while (
-        memory_manager.stats["working_memory_size"]
-        < memory_manager.working_memory_limit
-    ):
-        content = {"role": "user", "content": generate_test_message(50)}
-        memory_manager.add_memory(content)
+    stats = memory_manager.get_memory_stats()
+    while stats["pools"]["working"]["size"] < memory_manager.working_memory_limit:
+        content = generate_test_message(50)
+        memory_manager.add_memory_block(content, SignificanceType.USER)
+        stats = memory_manager.get_memory_stats()
 
     # Then fill short term memory
-    while memory_manager.stats["short_term_size"] < memory_manager.short_term_limit:
-        content = {"role": "user", "content": generate_test_message(50)}
-        memory_manager.add_memory(content)
+    while stats["pools"]["short_term"]["size"] < memory_manager.archival_memory_limit:
+        content = generate_test_message(50)
+        memory_manager.add_memory_block(content, SignificanceType.USER)
+        stats = memory_manager.get_memory_stats()
 
     # Add more to trigger archival
-    memory_manager.add_memory({"role": "user", "content": generate_test_message(50)})
+    memory_manager.add_memory_block(generate_test_message(50), SignificanceType.USER)
 
     # Verify some content moved to long-term memory
-    assert memory_manager.stats["short_term_size"] < memory_manager.short_term_limit
+    stats = memory_manager.get_memory_stats()
+    assert stats["pools"]["short_term"]["size"] < memory_manager.archival_memory_limit
     assert len(memory_manager.long_term_memory) > 0
 
 
 def test_memory_promotion(memory_manager):
     """Test that frequently accessed memories get promoted"""
     # Add some content and let it move to short term
-    content = {
-        "role": "user",
-        "content": "Important information that will be accessed frequently",
-    }
-    block_id = memory_manager.add_memory(content)
+    content = "Important information that will be accessed frequently"
+    block_id = memory_manager.add_memory_block(content, SignificanceType.USER)
 
     # Fill working memory to push our content to short term
+    stats = memory_manager.get_memory_stats()
     while (
         len(memory_manager.working_memory) > 0
-        or memory_manager.stats["working_memory_size"]
-        < memory_manager.working_memory_limit
+        or stats["pools"]["working"]["size"] < memory_manager.working_memory_limit
     ):
-        filler = {"role": "user", "content": generate_test_message(50)}
-        memory_manager.add_memory(filler)
+        filler = generate_test_message(50)
+        memory_manager.add_memory_block(filler, SignificanceType.USER)
+        stats = memory_manager.get_memory_stats()
 
     # Access our content multiple times
     query = "important information"
     for _ in range(6):  # More than the promotion threshold
         results = memory_manager.get_relevant_context(query)
-        assert any(
-            "Important information" in str(r.get("content", "")) for r in results
-        )
+        assert any("Important information" in block.content for block in results)
 
     # Verify promotion occurred
-    assert memory_manager.stats["promotions"] > 0
+    stats = memory_manager.get_memory_stats()
+    assert stats["operations"]["promotions"] > 0
     # Our content should be back in working memory
     assert any(
         block.id == block_id and block.level == MemoryLevel.WORKING
@@ -123,13 +121,9 @@ def test_memory_promotion(memory_manager):
 def test_nexus_points(memory_manager):
     """Test nexus point creation and tracking"""
     # Add memory with different significance types
-    content1 = {"role": "user", "content": "Critical user information"}
-    content2 = {"role": "assistant", "content": "Important LLM insight"}
-    content3 = {"role": "system", "content": "System checkpoint"}
-
-    memory_manager.add_memory(content1, SignificanceType.USER)
-    memory_manager.add_memory(content2, SignificanceType.LLM)
-    memory_manager.add_memory(content3, SignificanceType.SYSTEM)
+    memory_manager.add_memory_block("Critical user information", SignificanceType.USER)
+    memory_manager.add_memory_block("Important LLM insight", SignificanceType.LLM)
+    memory_manager.add_memory_block("System checkpoint", SignificanceType.SYSTEM)
 
     # Verify nexus points were created
     stats = memory_manager.get_memory_stats()
@@ -147,28 +141,29 @@ def test_relevant_context_retrieval(memory_manager):
 
     # Add content and force distribution across memory levels
     for var in variations:
-        content = {"role": "user", "content": base_content + var}
-        memory_manager.add_memory(content)
+        content = base_content + var
+        memory_manager.add_memory_block(content, SignificanceType.USER)
         # Add filler to push content through memory levels
         for _ in range(2):  # Reduced number of fillers
-            filler = {"role": "user", "content": generate_test_message(50)}
-            memory_manager.add_memory(filler)
+            filler = generate_test_message(50)
+            memory_manager.add_memory_block(filler, SignificanceType.USER)
 
     # Query for relevant content
     results = memory_manager.get_relevant_context("Python programming", max_blocks=3)
 
     # Verify we got relevant results
     assert len(results) > 0
-    assert all("Python" in str(r.get("content", "")) for r in results)
-    assert memory_manager.stats["retrievals"] > 0
+    assert all("Python" in block.content for block in results)
+    stats = memory_manager.get_memory_stats()
+    assert stats["operations"]["retrievals"] > 0
 
 
 def test_memory_stats(memory_manager):
     """Test memory statistics tracking"""
     # Add some content
     for _ in range(3):  # Reduced number of iterations
-        content = {"role": "user", "content": generate_test_message(50)}
-        memory_manager.add_memory(content)
+        content = generate_test_message(50)
+        memory_manager.add_memory_block(content, SignificanceType.USER)
 
     # Get stats
     stats = memory_manager.get_memory_stats()
@@ -180,10 +175,18 @@ def test_memory_stats(memory_manager):
     )
     assert all(
         key in stats["operations"]
-        for key in ["promotions", "demotions", "merges", "retrievals"]
+        for key in [
+            "promotions",
+            "demotions",
+            "merges",
+            "retrievals",
+            "avg_recall_time",
+            "compression_count",
+        ]
     )
     assert "nexus_points" in stats
-    assert stats["total_tokens"] > 0
+    assert "generations" in stats
+    assert "total_tokens" in stats
 
     # Verify utilization calculations
     assert 0 <= stats["pools"]["working"]["utilization"] <= 1

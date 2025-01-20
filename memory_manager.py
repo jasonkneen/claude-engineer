@@ -39,28 +39,34 @@ class MemoryBlock:
     access_count: int = 0
     last_accessed: float = field(default_factory=time.time)
 
-class MemoryManager:
 
+class MemoryManager:
     def __init__(
         self,
-        working_memory_limit: int = 200000, # Claude context window size
+        working_memory_limit: int = 200000,  # Claude context window size
+        archival_memory_limit: int = 1000000,  # Total memory size for archival
         archive_threshold: int = 150000,  # When to start archiving
         similarity_threshold: float = 0.85,
-        promotion_threshold: int = 5, 
+        promotion_threshold: int = 5,
         cleanup_interval: int = 1000,
         memory_server_client: Optional[Any] = None,
         stats_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        auto_archive: bool = True,
     ):
         self.working_memory: List[MemoryBlock] = []
+        self.short_term_memory: List[MemoryBlock] = []
+        self.long_term_memory: List[MemoryBlock] = []
         self.archived_memories: List[Dict[str, Any]] = []
         self.nexus_points: Dict[int, MemoryBlock] = {}
 
         # Limits and thresholds
         self.working_memory_limit = working_memory_limit
+        self.archival_memory_limit = archival_memory_limit
         self.archive_threshold = archive_threshold
         self.similarity_threshold = similarity_threshold
         self.promotion_threshold = promotion_threshold
         self.cleanup_interval = cleanup_interval
+        self.auto_archive = auto_archive
 
         # Memory server integration
         self.memory_server = memory_server_client
@@ -144,6 +150,8 @@ class MemoryManager:
             self._cleanup_memory()
             self.last_cleanup_time = time.time()
 
+        if self.stats_callback:
+            self.stats_callback(self.get_memory_stats())
         return block.id
 
     def _check_and_compress_memory(self):
@@ -158,33 +166,19 @@ class MemoryManager:
 
     def _archive_oldest_memories(self):
         """Archive oldest memories when approaching token limit"""
-        # Sort by timestamp (oldest first)
         ordered_blocks = sorted(self.working_memory, key=lambda b: b.timestamp)
-        
-        # Keep removing oldest blocks until under threshold
-        archived_count = 0
-        while (sum(b.tokens for b in self.working_memory) > self.archive_threshold 
-            and len(ordered_blocks) > 10):  # Keep minimum 10 blocks
-            
+        total_size = sum(block.tokens for block in self.working_memory)
+
+        while total_size > self.archive_threshold and len(ordered_blocks) > 10:
             block = ordered_blocks.pop(0)
-            w3w_memory = {
-                'id': block.id,
-                'content': block.content,
-                'w3w_tokens': self._generate_w3w_tokens(block.content),
-                'timestamp': block.timestamp,
-                'significance': block.significance_type
-            }
-            
             self.working_memory.remove(block)
-            self.archived_memories.append(w3w_memory)
-            archived_count += 1
+            block.level = MemoryLevel.SHORT_TERM
+            self.short_term_memory.append(block)
+            self.demotion_count += 1
+            total_size = sum(block.tokens for block in self.working_memory)
 
-            # Send to memory server if available
-            if self.memory_server:
-                self.memory_server.archive(w3w_memory)
-
-        if archived_count > 0:
-            self._broadcast_stats()
+        if self.stats_callback:
+            self.stats_callback(self.get_memory_stats())
 
     def _emergency_compress(self):
         """Emergency compression when over absolute limit"""
@@ -193,53 +187,8 @@ class MemoryManager:
             if len(self.working_memory) <= 3:  # Prevent infinite loop
                 break
 
-    def _compress_working_memory(self):
-        """Compress working memory by moving less relevant blocks to short-term"""
-        # Sort by relevance (access count and recency)
-        blocks = sorted(
-            self.working_memory,
-            key=lambda b: (b.access_count, -time.time() + b.last_accessed),
-        )
-
-        # Move least relevant blocks to short-term
-        while sum(b.tokens for b in self.working_memory) > self.working_memory_limit:
-            if not blocks:
-                break
-            block = blocks.pop(0)
-            block.level = MemoryLevel.SHORT_TERM
-            self.short_term_memory.append(block)
-            self.working_memory.remove(block)
-            self.demotion_count += 1
-
-    def _archive_to_long_term(self):
-        """Archive less relevant short-term memories to long-term"""
-        blocks = sorted(
-            self.short_term_memory,
-            key=lambda b: (b.access_count, -time.time() + b.last_accessed),
-        )
-
-        while sum(b.tokens for b in self.short_term_memory) > self.short_term_limit:
-            if not blocks:
-                break
-            block = blocks.pop(0)
-            block.level = MemoryLevel.LONG_TERM
-            self.long_term_memory.append(block)
-            self.short_term_memory.remove(block)
-            self.demotion_count += 1
-
-    def _cleanup_memory(self):
-        """Cleanup old and redundant memories"""
-        # Remove old memories from long-term
-        current_time = time.time()
-        old_threshold = current_time - (7 * 24 * 60 * 60)  # 7 days
-        self.long_term_memory = [
-            block
-            for block in self.long_term_memory
-            if block.timestamp > old_threshold or block.id in self.nexus_points
-        ]
-
-        # Merge similar memories
-        self._merge_similar_memories()
+        if self.stats_callback:
+            self.stats_callback(self.get_memory_stats())
 
     def _merge_similar_memories(self):
         """Merge similar memories within each level"""
@@ -280,6 +229,9 @@ class MemoryManager:
                         j += 1
                 i += 1
 
+        if self.stats_callback:
+            self.stats_callback(self.get_memory_stats())
+
     def _calculate_similarity(self, block1: MemoryBlock, block2: MemoryBlock) -> float:
         """Calculate cosine similarity between two memory blocks"""
         if block1.embedding is None or block2.embedding is None:
@@ -314,7 +266,17 @@ class MemoryManager:
         self.retrieval_count += 1
 
         # Return top matches
-        return [block for _, block in sorted(scored_blocks, reverse=True)[:max_blocks]]
+        matched_blocks = [
+            block
+            for _, block in sorted(scored_blocks, key=lambda x: x[0], reverse=True)[
+                :max_blocks
+            ]
+        ]
+
+        if self.stats_callback:
+            self.stats_callback(self.get_memory_stats())
+
+        return matched_blocks
 
     def _try_promote_block(self, block: MemoryBlock):
         """Try to promote a block based on its current level"""
@@ -332,39 +294,41 @@ class MemoryManager:
         # Reset access count after promotion
         block.access_count = 0
 
-    def _broadcast_stats(self):
-        """Broadcast memory stats to CLI and web dashboard"""
-        stats = self.get_memory_stats()
-        
-        # Send to web dashboard via callback
         if self.stats_callback:
-            self.stats_callback(stats)
-
-        # Store stats for CLI access
-        self._last_stats = stats
+            self.stats_callback(self.get_memory_stats())
 
     def get_memory_stats(self) -> Dict[str, Any]:
         """Get detailed statistics about the memory system"""
         working_size = sum(block.tokens for block in self.working_memory)
-        
-        stats = {
-            "memory": {
+        short_term_size = sum(block.tokens for block in self.short_term_memory)
+        long_term_size = sum(block.tokens for block in self.long_term_memory)
+
+        return {
+            "pools": {
                 "working": {
                     "count": len(self.working_memory),
                     "size": working_size,
+                    "limit": self.working_memory_limit,
                     "utilization": working_size / self.working_memory_limit,
                 },
-                "archived": {
-                    "count": len(self.archived_memories),
-                }
-            },
+                "short_term": {
+                    "count": len(self.short_term_memory),
+                    "size": short_term_size,
+                    "limit": self.archival_memory_limit,
+                    "utilization": short_term_size / self.archival_memory_limit,
+                },
+                "long_term": {
+                    "count": len(self.long_term_memory),
+                    "size": long_term_size,
+                },
             },
             "operations": {
                 "promotions": self.promotion_count,
                 "demotions": self.demotion_count,
                 "merges": self.merge_count,
                 "retrievals": self.retrieval_count,
-                "generations": self.generation_count,
+                "avg_recall_time": self.last_recall_time,
+                "compression_count": self.merge_count,
             },
             "nexus_points": {
                 "count": len(self.nexus_points),
@@ -386,10 +350,8 @@ class MemoryManager:
                     ),
                 },
             },
-            "total_tokens": working_size
-            + short_term_size
-            + sum(block.tokens for block in self.long_term_memory),
-            "last_recall_time_ms": self.last_recall_time,
+            "generations": self.generation_count,
+            "total_tokens": working_size + short_term_size + long_term_size,
         }
 
     def get_working_memory(self) -> List[MemoryBlock]:
