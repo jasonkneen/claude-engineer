@@ -1,0 +1,21 @@
+# Cline Rules and References
+
+# Tool Usage and Error Handling
+# KEYWORDS: tool_results conversation_history user_input message_required context_preservation tool_chaining
+# When encountering errors with tool usage, message requirements, or context preservation:
+# CHECK: .memory file for documented issues and solutions related to tool result handling
+# Particularly for:
+# - "at least one message is required" errors
+# - Context being lost during tool usage
+# - User input being overwritten
+# - Tool chaining issues
+
+# The .memory file contains detailed information about:
+# - Root causes of common tool-related issues
+# - Implementation fixes and code changes
+# - Best practices for maintaining conversation context
+# - Solutions for preserving user input during tool usage
+
+# - NEVER CONTINUE FROM A FILE UPDATE THAT IS MORE THAN 20% LESS THAN THE CONTENT PROVIDED WITHOUT STOPPING TO CHECK FOR USER APPROVAL
+
+# - IF YOU GET INTO A LOOP OF MORE THAN 2 TIMES TO FIX A BUG OR IF A SITUATION IS NOT BEING RESOLVED, IMMEDIATELY LOCK DOWN TO ASK MODE AND THEN ASK THE USER

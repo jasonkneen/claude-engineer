@@ -75,6 +75,19 @@ class Assistant:
         # Load tools
         self.tools = self._load_tools()
 
+    def display_available_tools(self):
+        """Print a list of currently loaded tools."""
+        self.console.print("\n[bold cyan]Available tools:[/bold cyan]")
+        tool_names = [tool["name"] for tool in self.tools]
+        if tool_names:
+            formatted_tools = ", ".join(
+                [f"🔧 [cyan]{name}[/cyan]" for name in tool_names]
+            )
+        else:
+            formatted_tools = "No tools available."
+        self.console.print(formatted_tools)
+        self.console.print("\n---")
+
     def _broadcast_memory_stats(self, stats):
         """Handle memory stats updates and broadcast to all interfaces"""
         if not stats:
@@ -197,11 +210,14 @@ class Assistant:
                 try:
                     module = importlib.import_module(f"tools.{module_info.name}")
                     self._extract_tools_from_module(module, tools)
-                except ImportError:
+                except ImportError as import_err:
+                    self.console.print(
+                        f"[yellow]ImportError loading {module_info.name}: {import_err}[/yellow]"
+                    )
                     continue
                 except Exception as mod_err:
                     self.console.print(
-                        f"[red]Error loading module {module_info.name}:[/red] {str(mod_err)}"
+                        f"[red]Error loading module {module_info.name}:[/red] {str(mod_err)}\n{mod_err.__class__.__name__}"
                     )
         except Exception as overall_err:
             self.console.print(
@@ -224,150 +240,6 @@ class Assistant:
                     self.console.print(
                         f"[red]Error initializing tool {name}:[/red] {str(tool_init_err)}"
                     )
-
-    def refresh_tools(self):
-        """Refresh the list of tools and show newly discovered tools."""
-        current_tool_names = {tool["name"] for tool in self.tools}
-        self.tools = self._load_tools()
-        new_tool_names = {tool["name"] for tool in self.tools}
-        new_tools = new_tool_names - current_tool_names
-
-        if new_tools:
-            self.console.print("\n")
-            for tool_name in new_tools:
-                tool_info = next(
-                    (t for t in self.tools if t["name"] == tool_name), None
-                )
-                if tool_info:
-                    description_lines = tool_info["description"].strip().split("\n")
-                    formatted_description = "\n    ".join(
-                        line.strip() for line in description_lines
-                    )
-                    self.console.print(
-                        f"[bold green]NEW[/bold green] 🔧 [cyan]{tool_name}[/cyan]:\n    {formatted_description}"
-                    )
-        else:
-            self.console.print("\n[yellow]No new tools found[/yellow]")
-
-    def display_available_tools(self):
-        """Print a list of currently loaded tools."""
-        self.console.print("\n[bold cyan]Available tools:[/bold cyan]")
-        tool_names = [tool["name"] for tool in self.tools]
-        if tool_names:
-            formatted_tools = ", ".join(
-                [f"🔧 [cyan]{name}[/cyan]" for name in tool_names]
-            )
-        else:
-            formatted_tools = "No tools available."
-        self.console.print(formatted_tools)
-        self.console.print("\n---")
-
-    def _execute_tool(self, tool_use):
-        """Execute a tool with memory integration."""
-        tool_name = tool_use.name
-        tool_input = tool_use.input or {}
-        tool_result = None
-
-        try:
-            module = importlib.import_module(f"tools.{tool_name}")
-            tool_instance = self._find_tool_instance_in_module(module, tool_name)
-
-            if not tool_instance:
-                tool_result = f"Tool not found: {tool_name}"
-            else:
-                try:
-                    result = tool_instance.execute(**tool_input)
-                    tool_result = result
-
-                    # Add memory block for successful tool execution
-                    self.memory_manager.add_memory_block(
-                        content=f"Tool execution: {tool_name} - {str(result)}",
-                        significance_type=SignificanceType.SYSTEM,
-                    )
-                except Exception as exec_err:
-                    tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
-        except ImportError:
-            tool_result = f"Failed to import tool: {tool_name}"
-        except Exception as e:
-            tool_result = f"Error executing tool: {str(e)}"
-
-        # Display tool usage
-        self._display_tool_usage(
-            tool_name,
-            tool_input,
-            (
-                json.dumps(tool_result)
-                if not isinstance(tool_result, str)
-                else tool_result
-            ),
-        )
-        return tool_result
-
-    def _find_tool_instance_in_module(self, module, tool_name: str):
-        """Search a given module for a tool class matching tool_name and return an instance of it."""
-        for name, obj in inspect.getmembers(module):
-            if inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool:
-                candidate_tool = obj()
-                if candidate_tool.name == tool_name:
-                    return candidate_tool
-        return None
-
-    def _display_tool_usage(self, tool_name: str, input_data: Dict, result: str):
-        """Display tool usage with memory integration."""
-        if not getattr(Config, "SHOW_TOOL_USAGE", False):
-            return
-
-        # Clean up data for display
-        cleaned_input = self._clean_data_for_display(input_data)
-        cleaned_result = self._clean_data_for_display(result)
-
-        tool_info = f"""[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input, indent=2)}
-[cyan]📤 Result:[/cyan] {cleaned_result}"""
-
-        panel = Panel(
-            tool_info,
-            title=f"Tool used: {tool_name}",
-            title_align="left",
-            border_style="cyan",
-            padding=(1, 2),
-        )
-        self.console.print(panel)
-
-    def _clean_data_for_display(self, data):
-        """Clean data for display by handling various data types."""
-        if isinstance(data, str):
-            try:
-                parsed_data = json.loads(data)
-                return self._clean_parsed_data(parsed_data)
-            except json.JSONDecodeError:
-                if len(data) > 1000 and ";base64," in data:
-                    return "[base64 data omitted]"
-                return data
-        elif isinstance(data, dict):
-            return self._clean_parsed_data(data)
-        else:
-            return data
-
-    def _clean_parsed_data(self, data):
-        """Recursively clean parsed JSON/dict data."""
-        if isinstance(data, dict):
-            cleaned = {}
-            for key, value in data.items():
-                if key in ["data", "image", "source"] and isinstance(value, str):
-                    if len(value) > 1000 and (
-                        ";base64," in value or value.startswith("data:")
-                    ):
-                        cleaned[key] = "[base64 data omitted]"
-                    else:
-                        cleaned[key] = value
-                else:
-                    cleaned[key] = self._clean_parsed_data(value)
-            return cleaned
-        elif isinstance(data, list):
-            return [self._clean_parsed_data(item) for item in data]
-        elif isinstance(data, str) and len(data) > 1000 and ";base64," in data:
-            return "[base64 data omitted]"
-        return data
 
     def _get_completion(self):
         """Get a completion from the Anthropic API with memory integration."""
@@ -399,6 +271,9 @@ class Assistant:
             processed_history = []
             for msg in self.conversation_history:
                 content = msg.get("content", "")
+                # Skip tool result messages when sending to API
+                if msg.get("role") == "tool_result":
+                    continue
                 if isinstance(content, list):
                     # Handle list of content blocks
                     text_content = []
@@ -475,15 +350,12 @@ class Assistant:
                                     }
                                 )
 
-                    # Convert tool results to string format for conversation history
-                    tool_results_str = json.dumps(tool_results)
-
-                    # Append tool usage to conversation and continue
+                    # Add tool usage to conversation history with special role
                     self.conversation_history.append(
                         {"role": "assistant", "content": response.content}
                     )
                     self.conversation_history.append(
-                        {"role": "user", "content": tool_results_str}
+                        {"role": "tool_result", "content": tool_results}
                     )
                     return self._get_completion()
 

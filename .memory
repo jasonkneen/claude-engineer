@@ -1,0 +1,48 @@
+{
+    "conversations": [
+        {
+            "date": "2025-01-20",
+            "topic": "Tool Results Handling Bug",
+            "issue": {
+                "description": "Tool results being incorrectly added as user messages in conversation history",
+                "symptoms": [
+                    "at least one message is required error",
+                    "conversation context being lost during tool usage",
+                    "user input being overwritten by tool results"
+                ],
+                "root_cause": "Tool results were being added to conversation history with 'user' role, interfering with the original user context"
+            },
+            "solution": {
+                "changes": [
+                    "Added special 'tool_result' role for tool outputs",
+                    "Added filtering in conversation history processing to skip tool results when sending to API",
+                    "Maintained original user context throughout tool usage chain"
+                ],
+                "code_changes": {
+                    "location": "ce3.py/_get_completion method",
+                    "key_modifications": [
+                        {
+                            "old": "self.conversation_history.append({'role': 'user', 'content': tool_results_str})",
+                            "new": "self.conversation_history.append({'role': 'tool_result', 'content': tool_results})"
+                        },
+                        {
+                            "added": "if msg.get('role') == 'tool_result': continue  # Skip tool results when processing history"
+                        }
+                    ]
+                }
+            },
+            "related_files": [
+                "ce3.py",
+                "memory_manager.py"
+            ],
+            "keywords": [
+                "tool_results",
+                "conversation_history",
+                "user_input",
+                "message_required",
+                "context_preservation",
+                "tool_chaining"
+            ]
+        }
+    ]
+}
