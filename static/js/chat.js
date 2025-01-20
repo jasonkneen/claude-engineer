@@ -194,7 +194,7 @@ document.getElementById('chat-form').addEventListener('submit', async (e) => {
     if (currentImageData) {
         // Optionally show the image in the chat
         const imagePreview = document.createElement('img');
-        imagePreview.src = `data:image/jpeg;base64,${currentImageData}`;
+        imagePreview.src = `data:${currentMediaType};base64,${currentImageData}`;
         imagePreview.className = 'max-h-48 rounded-lg mt-2';
         document.querySelector('.message-wrapper:last-child .prose').appendChild(imagePreview);
     }
@@ -214,7 +214,8 @@ document.getElementById('chat-form').addEventListener('submit', async (e) => {
             },
             body: JSON.stringify({
                 message: message,
-                image: currentImageData  // This will be null if no image is selected
+                image: currentImageData ? `data:${currentMediaType};base64,${currentImageData}` : null,
+                currentMediaType: currentMediaType
             })
         });
         
@@ -297,4 +298,4 @@ window.addEventListener('load', async () => {
     } catch (error) {
         console.error('Error resetting conversation:', error);
     }
-}); 
+});

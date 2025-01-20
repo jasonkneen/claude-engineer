@@ -1,0 +1,23 @@
+{
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "build": true,
+        "i18n": true,
+        "node_modules": true,
+        "platform": true,
+        "**/.trunk/*actions/": true,
+        "**/.trunk/*logs/": true,
+        "**/.trunk/*notifications/": true,
+        "**/.trunk/*out/": true,
+        "**/.trunk/*plugins/": true,
+        "**/.retool_types/**": true,
+        "**/*tsconfig.json": true,
+        ".cache": true,
+        "retool.config.json": true
+    }
+}
