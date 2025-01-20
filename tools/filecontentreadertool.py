@@ -12,7 +12,7 @@ class FileContentReaderTool(BaseTool):
     Handles file reading errors gracefully with built-in Python exceptions.
     When given a directory, recursively reads all text files while skipping binaries and common ignore patterns.
     '''
-    
+
     # Files and directories to ignore
     IGNORE_PATTERNS = {
         # Hidden files and directories
@@ -116,7 +116,7 @@ class FileContentReaderTool(BaseTool):
 
         return results
 
-    def execute(self, **kwargs) -> str:
+    def execute(self, **kwargs) -> dict:  # Changed return type annotation to dict
         file_paths = kwargs.get('file_paths', [])
         results = {}
 
@@ -131,7 +131,7 @@ class FileContentReaderTool(BaseTool):
                     content = self._read_file(path)
                     results[path] = content
 
-            return json.dumps(results, indent=2)
+            return results  # Return the dictionary directly, not JSON string
 
         except Exception as e:
-            return json.dumps({"error": str(e)}, indent=2)
+            return {"error": str(e)}  # Return error as dict, not JSON string

@@ -98,7 +98,7 @@ class Assistant:
             self.memory_client.broadcast_stats(stats)
 
         # Update CLI display
-        self._display_cli_stats(stats)
+        # self._display_cli_stats(stats)
 
     def _display_cli_stats(self, stats):
         """Display memory system statistics in CLI"""
@@ -241,6 +241,105 @@ class Assistant:
                         f"[red]Error initializing tool {name}:[/red] {str(tool_init_err)}"
                     )
 
+    def _execute_tool(self, tool_use):
+        """Execute a tool with memory integration."""
+        tool_name = tool_use.name
+        tool_input = tool_use.input or {}
+        tool_result = None
+
+        try:
+            module = importlib.import_module(f"tools.{tool_name}")
+            tool_instance = self._find_tool_instance_in_module(module, tool_name)
+
+            if not tool_instance:
+                tool_result = f"Tool not found: {tool_name}"
+            else:
+                try:
+                    result = tool_instance.execute(**tool_input)
+                    tool_result = result
+
+                    # Add memory block for successful tool execution
+                    self.memory_manager.add_memory_block(
+                        content=f"Tool execution: {tool_name} - {str(result)}",
+                        significance_type=SignificanceType.SYSTEM,
+                    )
+                except Exception as exec_err:
+                    tool_result = f"Error executing tool '{tool_name}': {str(exec_err)}"
+        except ImportError:
+            tool_result = f"Failed to import tool: {tool_name}"
+        except Exception as e:
+            tool_result = f"Error executing tool: {str(e)}"
+
+        # Display tool usage
+        self._display_tool_usage(tool_name, tool_input, tool_result)
+        return tool_result
+
+    def _find_tool_instance_in_module(self, module, tool_name: str):
+        """Search a given module for a tool class matching tool_name and return an instance of it."""
+        for name, obj in inspect.getmembers(module):
+            if inspect.isclass(obj) and issubclass(obj, BaseTool) and obj != BaseTool:
+                candidate_tool = obj()
+                if candidate_tool.name == tool_name:
+                    return candidate_tool
+        return None
+
+    def _display_tool_usage(self, tool_name: str, input_data: Dict, result: Any):
+        """Display tool usage with memory integration."""
+        if not getattr(Config, "SHOW_TOOL_USAGE", False):
+            return
+
+        # Clean up data for display
+        cleaned_input = self._clean_data_for_display(input_data)
+        cleaned_result = self._clean_data_for_display(result)
+
+        tool_info = f"""[cyan]📥 Input:[/cyan] {json.dumps(cleaned_input, indent=2)}
+[cyan]📤 Result:[/cyan] {cleaned_result}"""
+
+        panel = Panel(
+            tool_info,
+            title=f"Tool used: {tool_name}",
+            title_align="left",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+        self.console.print(panel)
+
+    def _clean_data_for_display(self, data):
+        """Clean data for display by handling various data types."""
+        if isinstance(data, str):
+            try:
+                parsed_data = json.loads(data)
+                return self._clean_parsed_data(parsed_data)
+            except json.JSONDecodeError:
+                if len(data) > 1000 and ";base64," in data:
+                    return "[base64 data omitted]"
+                return data
+        elif isinstance(data, dict):
+            return self._clean_parsed_data(data)
+        else:
+            return data
+
+    def _clean_parsed_data(self, data):
+        """Recursively clean parsed JSON/dict data."""
+        if isinstance(data, dict):
+            cleaned = {}
+            for key, value in data.items():
+                if key in ["data", "image", "source"] and isinstance(value, str):
+                    if len(value) > 1000 and (
+                        ";base64," in value or value.startswith("data:")
+                    ):
+                        cleaned[key] = "[base64 data omitted]"
+                    else:
+                        cleaned[key] = value
+                else:
+                    cleaned[key] = self._clean_parsed_data(value)
+            return cleaned
+        elif isinstance(data, list):
+            return [self._clean_parsed_data(item) for item in data]
+        elif isinstance(data, str) and len(data) > 1000 and ";base64," in data:
+            return "[base64 data omitted]"
+        return data
+
     def _get_completion(self):
         """Get a completion from the Anthropic API with memory integration."""
         try:
@@ -329,35 +428,25 @@ class Assistant:
                     for content_block in response.content:
                         if content_block.type == "tool_use":
                             result = self._execute_tool(content_block)
+                            tool_results.append(
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": content_block.id,
+                                    "content": result,
+                                }
+                            )
 
-                            # Handle structured data vs text
-                            if isinstance(result, (list, dict)):
-                                tool_results.append(
-                                    {
-                                        "type": "tool_result",
-                                        "tool_use_id": content_block.id,
-                                        "content": result,
-                                    }
-                                )
-                            else:
-                                tool_results.append(
-                                    {
-                                        "type": "tool_result",
-                                        "tool_use_id": content_block.id,
-                                        "content": [
-                                            {"type": "text", "text": str(result)}
-                                        ],
-                                    }
-                                )
-
-                    # Add tool usage to conversation history with special role
+                    # Add tool usage to conversation history
                     self.conversation_history.append(
                         {"role": "assistant", "content": response.content}
                     )
-                    self.conversation_history.append(
-                        {"role": "tool_result", "content": tool_results}
-                    )
-                    return self._get_completion()
+                    if tool_results:  # Only add tool results if we have any
+                        self.conversation_history.append(
+                            {"role": "tool_result", "content": tool_results}
+                        )
+                        return self._get_completion()  # Continue the conversation
+                    else:
+                        return "No tool results available."  # Stop if no tool results
 
                 else:
                     self.console.print(
