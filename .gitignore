@@ -1,7 +1,12 @@
-uploads/
 *.pyc
 .DS_Store
+node_modules
+.codegpt
+.context/
+.context_archive/
 .env
+.pytest_cache/
+.ruff_cache/
 .venv/
 __pycache__/
 .ruff_cache/
@@ -88,3 +93,5 @@ env/
 *.exe
 *.o
 *.so
+uploads/
+/mcp/servers/notification-server/node_modules
