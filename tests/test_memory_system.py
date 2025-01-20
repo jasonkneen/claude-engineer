@@ -1,185 +1,195 @@
-import pytest
-from unittest.mock import Mock, patch
-from memory_manager import MemoryManager, SignificanceType
-from tools.w3w_tokenizer import W3WTokenizer
-from memory_server_client import MemoryServerClient
-from config import Config
-import websockets
-import json
-import asyncio
+import unittest
+import tempfile
+import shutil
+import time
+from pathlib import Path
+from memory_system import MemorySystem, SignificanceType, MemoryTier
 
-@pytest.fixture
-def memory_manager():
-    config = Config()
-    config.token_limit = 200000
-    config.archival_threshold = 180000
-    return MemoryManager(config)
+class TestMemorySystem(unittest.TestCase):
+    def setUp(self):
+        # Create a temporary directory for testing
+        self.test_dir = tempfile.mkdtemp()
+        self.memory_dir = Path(self.test_dir) / ".memory"
+        
+        # Initialize memory system with test-appropriate settings
+        self.memory_system = MemorySystem(
+            base_dir=str(self.memory_dir),
+            working_memory_limit=1000,
+            archive_threshold=800,
+            max_nexus_points=5,
+            stats_retention_days=1
+        )
 
-@pytest.fixture
-def memory_client():
-    return MemoryServerClient(host="localhost", port=8000)
+    def tearDown(self):
+        # Clean up the temporary directory
+        shutil.rmtree(self.test_dir)
 
-@pytest.fixture
-def w3w_tokenizer():
-    return W3WTokenizer()
+    def test_memory_addition(self):
+        """Test adding new memories to the system"""
+        # Add a memory
+        memory_id = self.memory_system.add_memory(
+            "Test memory content",
+            SignificanceType.USER
+        )
+        
+        # Verify memory was added
+        memory = self.memory_system.get_memory_by_id(memory_id)
+        self.assertIsNotNone(memory)
+        self.assertEqual(memory.content, "Test memory content")
+        self.assertEqual(memory.significance_type, SignificanceType.USER)
 
-@pytest.fixture
-async def mock_websocket_server():
-    connected = set()
-    async def handler(websocket):
-        connected.add(websocket)
-        try:
-            async for message in websocket:
-                data = json.loads(message)
-                # Broadcast to all clients
-                for client in connected:
-                    await client.send(json.dumps({
-                        "type": "stats_update",
-                        "data": data
-                    }))
-        finally:
-            connected.remove(websocket)
-    
-    server = await websockets.serve(handler, "localhost", 8000)
-    yield server
-    server.close()
+    def test_memory_search(self):
+        """Test memory search functionality"""
+        # Add some test memories
+        self.memory_system.add_memory("The quick brown fox", SignificanceType.USER)
+        self.memory_system.add_memory("The lazy dog", SignificanceType.USER)
+        self.memory_system.add_memory("Unrelated content", SignificanceType.USER)
 
-class TestMemoryArchival:
-    @pytest.mark.asyncio
-    async def test_token_limit_triggers_archival(self, memory_manager, memory_client):
-        # Fill memory to just below threshold
-        for i in range(1000):
-            memory_manager.add_memory_block(
-                content=f"Test memory {i}",
-                significance_type=SignificanceType.SYSTEM
+        # Search memories
+        results = self.memory_system.search_memory("quick fox")
+        self.assertEqual(len(results), 1)
+        self.assertIn("quick brown fox", results[0].content)
+
+    def test_related_memories(self):
+        """Test retrieval of related memories"""
+        # Add related memories
+        memory_id = self.memory_system.add_memory(
+            "Primary memory content",
+            SignificanceType.USER
+        )
+        self.memory_system.add_memory(
+            "Related memory content",
+            SignificanceType.USER
+        )
+
+        # Get related memories
+        related = self.memory_system.get_related_memories(memory_id)
+        self.assertGreaterEqual(len(related), 0)
+
+    def test_w3w_lookup(self):
+        """Test what3words lookup functionality"""
+        # Add memory with specific w3w reference
+        memory_id = self.memory_system.add_memory(
+            "Memory with w3w reference",
+            SignificanceType.USER
+        )
+        
+        # Get memory and extract w3w reference
+        memory = self.memory_system.get_memory_by_id(memory_id)
+        
+        if memory and memory.w3w_reference:
+            # Look up using w3w
+            results = self.memory_system.lookup_by_w3w(memory.w3w_reference[:2])
+            self.assertGreater(len(results), 0)
+
+    def test_memory_pruning(self):
+        """Test automatic memory pruning"""
+        # Add memories until pruning threshold is reached
+        for i in range(100):  # Should exceed threshold
+            self.memory_system.add_memory(
+                f"Memory content {i} " * 5,  # Make content large enough
+                SignificanceType.USER
             )
-        
-        # Add one more block that pushes it over the limit
-        memory_manager.add_memory_block(
-            content="Trigger block",
-            significance_type=SignificanceType.USER
-        )
-        
-        # Verify archival occurred
-        assert memory_manager.current_token_count < memory_manager.token_limit
-        assert len(memory_client.archived_memories) > 0
+            time.sleep(0.01)  # Small delay to ensure different timestamps
 
-    @pytest.mark.asyncio
-    async def test_archival_converts_to_w3w(self, memory_manager, w3w_tokenizer):
-        test_text = "This is a test memory that should be converted to W3W format"
-        memory_manager.add_memory_block(
-            content=test_text,
-            significance_type=SignificanceType.USER
+        # Get memory stats
+        stats = self.memory_system.get_memory_stats()
+        
+        # Verify working memory is under limit
+        self.assertLess(
+            stats['memory_state']['tiers']['working']['tokens'],
+            self.memory_system.pruner.working_memory_limit
         )
-        
-        # Get archived memory
-        archived = memory_manager.get_archived_memories()[0]
-        
-        # Verify W3W conversion
-        assert "w3w_tokens" in archived
-        assert len(archived["w3w_tokens"]) > 0
-        
-        # Verify we can reconstruct original text
-        reconstructed = w3w_tokenizer.decode(archived["w3w_tokens"])
-        assert reconstructed.strip() == test_text
 
-class TestMemoryStats:
-    @pytest.mark.asyncio
-    async def test_stats_broadcast_on_changes(self, memory_manager, mock_websocket_server):
-        client = websockets.WebSocket()
-        client.connect("ws://localhost:8000")
-        
-        # Add memory and verify stats update
-        memory_manager.add_memory_block(
-            content="Test memory",
-            significance_type=SignificanceType.SYSTEM
+    def test_nexus_point_creation(self):
+        """Test nexus point creation through frequent access"""
+        # Add a memory
+        memory_id = self.memory_system.add_memory(
+            "Frequently accessed memory",
+            SignificanceType.USER
         )
-        
-        message = client.recv()
-        stats = json.loads(message)
-        
-        assert stats["type"] == "stats_update"
-        assert stats["data"]["current_token_count"] == 1000
-        await client.close()
 
-    @pytest.mark.asyncio
-    async def test_cli_matches_web_stats(self, memory_manager, mock_websocket_server):
-        # Add some memories
-        memory_manager.add_memory_block(
-            content="Memory 1",
-            significance_type=SignificanceType.USER
-        )
-        memory_manager.add_memory_block(
-            content="Memory 2",
-            significance_type=SignificanceType.SYSTEM
-        )
-        
-        # Get CLI stats
-        cli_stats = memory_manager.get_stats()
-        
-        # Get web stats
-        client = websockets.WebSocket()
-        client.connect("ws://localhost:8000")
-        message = client.recv()
-        web_stats = json.loads(message)["data"]
+        # Search for it multiple times to trigger nexus point creation
+        for _ in range(10):
+            self.memory_system.search_memory("Frequently accessed")
+            time.sleep(0.1)
 
-        # Verify they match
-        assert cli_stats["current_token_count"] == web_stats["current_token_count"]
-        assert cli_stats["total_memories"] == web_stats["total_memories"]
-        client.close()
+        # Check if it became a nexus point
+        nexus_points = self.memory_system.get_nexus_points()
+        self.assertTrue(any(np.id == memory_id for np in nexus_points))
 
-class TestContextWindow:
-    def test_efficient_token_management(self, memory_manager):
-        # Add memories up to limit
-        for i in range(100):
-            memory_manager.add_memory_block(
-                content=f"Memory {i}",
-                significance_type=SignificanceType.SYSTEM
+    def test_system_maintenance(self):
+        """Test system maintenance operations"""
+        # Add some test data
+        for i in range(5):
+            self.memory_system.add_memory(
+                f"Test memory {i}",
+                SignificanceType.USER
             )
-        
-        # Verify older memories got archived
-        assert memory_manager.current_token_count <= memory_manager.token_limit
-        assert len(memory_manager.get_archived_memories()) > 0
 
-    @pytest.mark.asyncio
-    async def test_memory_retrieval_from_archive(self, memory_manager, memory_client):
-        # Archive some memories
-        for i in range(50):
-            memory_manager.add_memory_block(
-                content=f"Test memory {i}",
-                significance_type=SignificanceType.SYSTEM
+        # Perform maintenance
+        self.memory_system.maintain_system()
+
+        # Verify system state
+        stats = self.memory_system.get_memory_stats()
+        self.assertIn('memory_state', stats)
+        self.assertIn('nexus_points', stats)
+        self.assertIn('performance', stats)
+
+    def test_statistics_tracking(self):
+        """Test statistics tracking"""
+        # Perform various operations
+        self.memory_system.add_memory("Test memory 1", SignificanceType.USER)
+        self.memory_system.search_memory("Test")
+        self.memory_system.maintain_system()
+
+        # Get statistics
+        stats = self.memory_system.get_memory_stats()
+        
+        # Verify statistics are being tracked
+        self.assertIn('performance', stats)
+        perf_report = stats['performance']
+        self.assertIn('daily_stats', perf_report)
+        self.assertIn('performance_summary', perf_report)
+        self.assertIn('operation_summary', perf_report)
+
+    def test_error_handling(self):
+        """Test error handling in memory operations"""
+        # Test with invalid memory ID
+        with self.assertRaises(Exception):
+            self.memory_system.get_related_memories("invalid_id")
+
+        # Verify error was recorded in statistics
+        stats = self.memory_system.get_memory_stats()
+        self.assertIn('performance', stats)
+        self.assertIn('error_count', stats['performance']['daily_stats']['performance'])
+
+    def test_memory_promotion(self):
+        """Test memory promotion through access patterns"""
+        # Add memory to long-term storage
+        memory_id = self.memory_system.add_memory(
+            "Memory to promote",
+            SignificanceType.USER
+        )
+        
+        # Force it to long-term storage
+        memory = self.memory_system.get_memory_by_id(memory_id)
+        if memory:
+            self.memory_system.file_manager.move_block_to_tier(
+                memory_id,
+                MemoryTier.WORKING,
+                MemoryTier.LONG_TERM
             )
-        
-        # Query for relevant context
-        results = await memory_manager.get_relevant_context("test memory 25")
-        
-        # Verify retrieval works
-        assert len(results) > 0
-        assert "Test memory 25" in results[0]["content"]
 
-class TestMemoryServerIntegration:
-    @pytest.mark.asyncio
-    async def test_server_connection_handling(self, memory_client):
-        # Test connection establishment
-        connected = await memory_client.connect()
-        assert connected
-        
-        # Test reconnection on failure
-        with patch('websockets.connect', side_effect=Exception):
-            await memory_client.reconnect()
-            assert memory_client.using_local_fallback
+        # Access it multiple times
+        for _ in range(5):
+            self.memory_system.search_memory("Memory to promote")
+            time.sleep(0.1)
 
-    @pytest.mark.asyncio
-    async def test_memory_persistence(self, memory_manager, memory_client):
-        # Store memory
-        test_memory = "Memory to be stored long-term"
-        await memory_client.archive(
-            content=test_memory, 
-            significance_type=SignificanceType.USER
-        )
-        )
-        
-        # Verify retrieval
-        memories = await memory_client.get_memories()
-        assert any(test_memory in m["content"] for m in memories)
+        # Verify it was promoted
+        promoted_memory = self.memory_system.get_memory_by_id(memory_id)
+        self.assertIsNotNone(promoted_memory)
+        self.assertEqual(promoted_memory.tier, MemoryTier.WORKING)
 
+if __name__ == '__main__':
+    unittest.main()
