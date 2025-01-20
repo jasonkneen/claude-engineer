@@ -20,6 +20,7 @@ from config import Config
 from tools.base import BaseTool
 from prompts.system_prompts import SystemPrompts
 from memory_manager import MemoryManager, MemoryBlock, SignificanceType, MemoryLevel
+from memory_server_client import MemoryServerClient
 
 # Configure logging
 logging.basicConfig(level=logging.ERROR, format="%(levelname)s: %(message)s")
@@ -32,6 +33,18 @@ class Assistant:
         # Initialize Anthropic client
         self.client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
 
+        # Initialize memory server client if enabled
+        self.memory_client = None
+        if getattr(Config, "ENABLE_MEMORY_SERVER", False):
+            try:
+                self.memory_client = MemoryServerClient(
+                    host=getattr(Config, "MEMORY_SERVER_HOST", "localhost"),
+                    port=getattr(Config, "MEMORY_SERVER_PORT", 8000)
+                )
+                self.console.print("[green]Connected to memory server[/green]")
+            except Exception as e:
+                self.console.print(f"[yellow]Warning: Could not connect to memory server: {e}[/yellow]")
+
         # Initialize memory system with configurable limits
         self.memory_manager = MemoryManager(
             working_memory_limit=getattr(Config, "WORKING_MEMORY_LIMIT", 8192),
@@ -39,6 +52,8 @@ class Assistant:
             similarity_threshold=getattr(Config, "MEMORY_SIMILARITY_THRESHOLD", 0.85),
             promotion_threshold=getattr(Config, "MEMORY_PROMOTION_THRESHOLD", 5),
             cleanup_interval=getattr(Config, "MEMORY_CLEANUP_INTERVAL", 1000),
+            memory_client=self.memory_client,
+            stats_callback=self._broadcast_memory_stats
         )
 
         # Memory tracking
@@ -156,9 +171,19 @@ class Assistant:
         self.console.print(formatted_tools)
         self.console.print("\n---")
 
-    def _display_memory_stats(self):
-        """Display memory system statistics"""
-        stats = self.memory_manager.get_memory_stats()
+    def _broadcast_memory_stats(self, stats):
+        """Handle memory stats updates and broadcast to all interfaces"""
+        # Update web interface if memory client is available
+        if self.memory_client:
+            self.memory_client.broadcast_stats(stats)
+
+        # Update CLI display
+        self._display_cli_stats(stats)
+
+    def _display_cli_stats(self, stats):
+        """Display memory system statistics in CLI"""
+        if not stats:
+            stats = self.memory_manager.get_memory_stats()
 
         # Memory pools section
         pools_text = []
@@ -429,12 +454,15 @@ class Assistant:
                                     }
                                 )
 
+                    # Convert tool results to string format for conversation history
+                    tool_results_str = json.dumps(tool_results)
+
                     # Append tool usage to conversation and continue
                     self.conversation_history.append(
                         {"role": "assistant", "content": response.content}
                     )
                     self.conversation_history.append(
-                        {"role": "user", "content": tool_results}
+                        {"role": "user", "content": tool_results_str}
                     )
                     return self._get_completion()
 

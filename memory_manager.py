@@ -1,9 +1,10 @@
-from typing import List, Dict, Optional, Any, Union
+from typing import List, Dict, Optional, Any, Union, Callable
 import numpy as np
 from dataclasses import dataclass, field
 from enum import Enum
 import time
 import random
+import json
 from datetime import datetime, timedelta
 
 # Try to import tiktoken, fallback to simple tokenizer if not available
@@ -42,22 +43,28 @@ class MemoryManager:
 
     def __init__(
         self,
-        working_memory_limit: int = 8192,
-        short_term_limit: int = 128000,
+        working_memory_limit: int = 200000, # Claude context window size
+        archive_threshold: int = 150000,  # When to start archiving
         similarity_threshold: float = 0.85,
-        promotion_threshold: int = 5,
+        promotion_threshold: int = 5, 
         cleanup_interval: int = 1000,
+        memory_server_client: Optional[Any] = None,
+        stats_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ):
         self.working_memory: List[MemoryBlock] = []
-        self.short_term_memory: List[MemoryBlock] = []
-        self.long_term_memory: List[MemoryBlock] = []
+        self.archived_memories: List[Dict[str, Any]] = []
         self.nexus_points: Dict[int, MemoryBlock] = {}
 
+        # Limits and thresholds
         self.working_memory_limit = working_memory_limit
-        self.short_term_limit = short_term_limit
+        self.archive_threshold = archive_threshold
         self.similarity_threshold = similarity_threshold
         self.promotion_threshold = promotion_threshold
         self.cleanup_interval = cleanup_interval
+
+        # Memory server integration
+        self.memory_server = memory_server_client
+        self.stats_callback = stats_callback
 
         # Initialize tokenizer if available
         self.tokenizer = (
@@ -140,16 +147,51 @@ class MemoryManager:
         return block.id
 
     def _check_and_compress_memory(self):
-        """Check memory limits and compress if needed"""
-        # Check working memory
+        """Check memory limits and archive if needed"""
         working_size = sum(block.tokens for block in self.working_memory)
-        if working_size > self.working_memory_limit:
-            self._compress_working_memory()
 
-        # Check short-term memory
-        short_term_size = sum(block.tokens for block in self.short_term_memory)
-        if short_term_size > self.short_term_limit:
-            self._archive_to_long_term()
+        if working_size > self.archive_threshold:
+            self._archive_oldest_memories()
+
+        if working_size > self.working_memory_limit:
+            self._emergency_compress()
+
+    def _archive_oldest_memories(self):
+        """Archive oldest memories when approaching token limit"""
+        # Sort by timestamp (oldest first)
+        ordered_blocks = sorted(self.working_memory, key=lambda b: b.timestamp)
+        
+        # Keep removing oldest blocks until under threshold
+        archived_count = 0
+        while (sum(b.tokens for b in self.working_memory) > self.archive_threshold 
+            and len(ordered_blocks) > 10):  # Keep minimum 10 blocks
+            
+            block = ordered_blocks.pop(0)
+            w3w_memory = {
+                'id': block.id,
+                'content': block.content,
+                'w3w_tokens': self._generate_w3w_tokens(block.content),
+                'timestamp': block.timestamp,
+                'significance': block.significance_type
+            }
+            
+            self.working_memory.remove(block)
+            self.archived_memories.append(w3w_memory)
+            archived_count += 1
+
+            # Send to memory server if available
+            if self.memory_server:
+                self.memory_server.archive(w3w_memory)
+
+        if archived_count > 0:
+            self._broadcast_stats()
+
+    def _emergency_compress(self):
+        """Emergency compression when over absolute limit"""
+        while sum(b.tokens for b in self.working_memory) > self.working_memory_limit:
+            self._merge_similar_memories()
+            if len(self.working_memory) <= 3:  # Prevent infinite loop
+                break
 
     def _compress_working_memory(self):
         """Compress working memory by moving less relevant blocks to short-term"""
@@ -290,27 +332,32 @@ class MemoryManager:
         # Reset access count after promotion
         block.access_count = 0
 
+    def _broadcast_stats(self):
+        """Broadcast memory stats to CLI and web dashboard"""
+        stats = self.get_memory_stats()
+        
+        # Send to web dashboard via callback
+        if self.stats_callback:
+            self.stats_callback(stats)
+
+        # Store stats for CLI access
+        self._last_stats = stats
+
     def get_memory_stats(self) -> Dict[str, Any]:
         """Get detailed statistics about the memory system"""
         working_size = sum(block.tokens for block in self.working_memory)
-        short_term_size = sum(block.tokens for block in self.short_term_memory)
-
-        return {
-            "pools": {
+        
+        stats = {
+            "memory": {
                 "working": {
                     "count": len(self.working_memory),
                     "size": working_size,
                     "utilization": working_size / self.working_memory_limit,
                 },
-                "short_term": {
-                    "count": len(self.short_term_memory),
-                    "size": short_term_size,
-                    "utilization": short_term_size / self.short_term_limit,
-                },
-                "long_term": {
-                    "count": len(self.long_term_memory),
-                    "size": sum(block.tokens for block in self.long_term_memory),
-                },
+                "archived": {
+                    "count": len(self.archived_memories),
+                }
+            },
             },
             "operations": {
                 "promotions": self.promotion_count,

@@ -384,15 +384,17 @@ class Assistant:
                                     "content": [{"type": "text", "text": str(result)}]
                                 })
 
+                    # Convert tool results to string format for conversation history
+                    tool_results_str = json.dumps(tool_results)
+
                     # Append tool usage to conversation and continue
                     self.conversation_history.append({
                         "role": "assistant",
                         "content": response.content
                     })
-                    self.conversation_history.append({
-                        "role": "user",
-                        "content": tool_results
-                    })
+                    self.conversation_history.append(
+                        {"role": "user", "content": tool_results_str}
+                    )
                     return self._get_completion()  # Recursive call to continue the conversation
 
                 else:
